@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#FFFFFF">
+  <title>Ocean</title>
+  <link rel="icon" href="icon.svg?v=9" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/pwa/apple-touch-icon.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="application-name" content="Ocean">
+  <link rel="stylesheet" href="app.css?v=9">
+  <script src="vendor/marked.js?v=9" defer></script>
+  <script src="vendor/purify.js?v=9" defer></script>
+  <script src="app.js?v=9" defer></script>
+</head>
+<body>
+  <!-- ===== Sign in and setup ===== -->
+  <main id="auth" class="auth" hidden>
+    <div class="auth-brand"><img src="icon.svg?v=9" alt="" width="44" height="44"><span>Ocean</span></div>
+
+    <form id="signin-form" class="auth-card" hidden>
+      <h1>Welcome back</h1>
+      <p class="muted">Sign in to Ocean.</p>
+      <label for="login-username">Username</label>
+      <input id="login-username" autocomplete="username" required spellcheck="false" autocapitalize="off">
+      <label for="login-password">Password</label>
+      <input id="login-password" type="password" autocomplete="current-password" required>
+      <label for="login-code">6-digit code from your authenticator app</label>
+      <input id="login-code" class="mono" inputmode="numeric" autocomplete="one-time-code" required spellcheck="false" maxlength="20">
+      <p class="hint">Lost your phone? Enter a recovery code instead.</p>
+      <p id="signin-error" class="error" role="alert" hidden></p>
+      <button type="submit" class="btn btn-primary">Sign in</button>
+      <button type="button" id="show-reset" class="link-button">Reset the login with the access token</button>
+    </form>
+
+    <form id="setup-form" class="auth-card" hidden>
+      <h1 id="setup-title">Set up your login</h1>
+      <p id="setup-intro" class="muted"></p>
+      <label for="setup-token">Access token</label>
+      <input id="setup-token" class="mono" type="password" required spellcheck="false" autocomplete="off">
+      <label for="setup-username">Choose a username</label>
+      <input id="setup-username" autocomplete="username" required spellcheck="false" autocapitalize="off" pattern="[A-Za-z0-9._\-]+" minlength="2" maxlength="80">
+      <label for="setup-password">Choose a password</label>
+      <input id="setup-password" type="password" autocomplete="new-password" required minlength="12">
+      <p class="hint">At least 12 characters. A short sentence works well.</p>
+      <label for="setup-password2">Type the password again</label>
+      <input id="setup-password2" type="password" autocomplete="new-password" required minlength="12">
+      <p id="setup-error" class="error" role="alert" hidden></p>
+      <button type="submit" class="btn btn-primary">Continue</button>
+      <button type="button" id="cancel-reset" class="link-button" hidden>Back to sign in</button>
+    </form>
+
+    <form id="totp-form" class="auth-card" hidden>
+      <h1>Link your authenticator app</h1>
+      <p class="muted">In Google Authenticator, Microsoft Authenticator or a similar app, add an account and scan this code.</p>
+      <img id="totp-qr" class="qr" alt="QR code for your authenticator app" width="200" height="200">
+      <p class="hint">Can't scan it? Enter this key instead:</p>
+      <code id="totp-secret" class="secret"></code>
+      <label for="totp-code">Enter the 6-digit code the app shows</label>
+      <input id="totp-code" class="mono" inputmode="numeric" autocomplete="one-time-code" required maxlength="6" spellcheck="false">
+      <p id="totp-error" class="error" role="alert" hidden></p>
+      <button type="submit" class="btn btn-primary">Confirm code</button>
+    </form>
+
+    <section id="recovery-panel" class="auth-card" hidden>
+      <h1>Save your recovery codes</h1>
+      <p class="muted">If you lose your phone, each code lets you sign in once. Keep them somewhere safe, such as a password manager. They will not be shown again.</p>
+      <ol id="recovery-list" class="recovery-list"></ol>
+      <div class="row">
+        <button type="button" id="copy-recovery" class="btn btn-ghost">Copy codes</button>
+        <button type="button" id="download-recovery" class="btn btn-ghost">Download as a file</button>
+      </div>
+      <label class="check"><input type="checkbox" id="saved-recovery"> I have saved these codes</label>
+      <button type="button" id="finish-setup" class="btn btn-primary" disabled>Open Ocean</button>
+    </section>
+  </main>
+
+  <!-- ===== App ===== -->
+  <div id="app" class="app" hidden>
+    <aside id="sidebar" class="sidebar" aria-label="Chats">
+      <div class="side-top">
+        <a href="#" id="home-link" class="brand" aria-label="Ocean, start a new chat">
+          <img src="icon.svg?v=9" alt="" width="28" height="28"><span>Ocean</span>
+        </a>
+        <button id="collapse-sidebar" class="icon-btn" aria-label="Hide chat list" title="Hide chat list">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3"/><path d="M9.5 4.5v15"/></svg>
+        </button>
+      </div>
+      <button id="new-chat" class="new-chat">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        New chat
+      </button>
+      <div class="search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg>
+        <label for="search" class="sr-only">Search chats</label>
+        <input id="search" type="search" placeholder="Search chats" autocomplete="off">
+      </div>
+      <nav id="chat-list" class="chat-list"></nav>
+      <div class="side-foot">
+        <button id="usage-link" class="side-row">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg>
+          Usage
+        </button>
+        <button id="settings-link" class="side-row">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+          Settings
+        </button>
+        <div class="me">
+          <span id="avatar" class="avatar" aria-hidden="true"></span>
+          <span id="signed-in-as" class="me-name"></span>
+          <button id="sign-out" class="link-button small">Sign out</button>
+        </div>
+      </div>
+    </aside>
+    <div id="scrim" class="scrim" hidden></div>
+
+    <section class="main">
+      <header class="topbar">
+        <button id="open-sidebar" class="icon-btn" aria-label="Show chat list" title="Show chat list">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3"/><path d="M9.5 4.5v15"/></svg>
+        </button>
+        <button id="topbar-new" class="icon-btn only-collapsed" aria-label="New chat" title="New chat">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h8M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+        </button>
+        <h2 id="chat-title" class="chat-title"></h2>
+        <div class="top-actions">
+          <button id="private" class="pill" aria-pressed="true" title="Private chats stay with providers that allow client work">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="9.5" rx="2.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg>
+            <span id="private-label">Private</span>
+          </button>
+          <label for="route" class="sr-only">Brain</label>
+          <select id="route" class="route"></select>
+          <button id="chat-menu-button" class="icon-btn" aria-label="Chat options" aria-haspopup="true" aria-expanded="false" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></svg>
+          </button>
+          <div id="chat-menu" class="menu" role="menu" hidden>
+            <button role="menuitem" id="rename-chat">Rename</button>
+            <button role="menuitem" id="delete-chat" class="danger">Delete</button>
+          </div>
+          <button id="gauge" class="gauge" aria-label="Usage today" aria-controls="usage-panel" aria-expanded="false" title="Usage today">
+            <svg viewBox="0 0 36 36" aria-hidden="true">
+              <circle class="gauge-track" cx="18" cy="18" r="14"/>
+              <circle id="gauge-fill" class="gauge-fill" cx="18" cy="18" r="14"/>
+            </svg>
+            <span id="gauge-text" class="gauge-text">0%</span>
+          </button>
+        </div>
+      </header>
+
+      <div id="scroller" class="scroller">
+        <!-- Start screen -->
+        <div id="welcome" class="welcome">
+          <img src="icon.svg?v=9" alt="" width="76" height="76" class="welcome-logo">
+          <h1 id="greeting" class="greeting">Good day</h1>
+          <p class="welcome-sub">What are we working on?</p>
+        </div>
+        <div id="messages" class="messages" aria-live="polite"></div>
+      </div>
+
+      <div id="dock" class="dock">
+        <form id="composer" class="composer">
+          <div id="attachments" class="attachments" hidden></div>
+          <label for="input" class="sr-only">Message Ocean</label>
+          <textarea id="input" rows="1" placeholder="Ask Ocean anything"></textarea>
+          <div class="composer-row">
+            <div class="composer-left">
+              <button type="button" id="attach" class="icon-btn" aria-label="Attach files" title="Attach files">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 11.5l-8 8a5 5 0 0 1-7-7l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7L10.2 17a1.7 1.7 0 0 1-2.4-2.4l7.6-7.6"/></svg>
+              </button>
+              <input id="file-input" type="file" multiple hidden>
+              <div class="modes" role="group" aria-label="Quick modes">
+                <button type="button" class="mode" data-mode="research" aria-pressed="false">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.6 3.7 5.4 3.7 8.5s-1.2 5.9-3.7 8.5c-2.5-2.6-3.7-5.4-3.7-8.5S9.5 6.1 12 3.5z"/></svg>
+                  <span>Research</span>
+                </button>
+                <button type="button" class="mode" data-mode="image" aria-pressed="false">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3"/><circle cx="9" cy="10" r="1.8"/><path d="M20.5 16l-5-5-9 8.5"/></svg>
+                  <span>Picture</span>
+                </button>
+                <button type="button" class="mode" data-mode="code" aria-pressed="false">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 7.5L4 12l4.5 4.5M15.5 7.5L20 12l-4.5 4.5M13.5 5l-3 14"/></svg>
+                  <span>Code</span>
+                </button>
+              </div>
+            </div>
+            <div class="composer-right">
+              <span id="rec-time" class="rec-time" hidden>0:00</span>
+              <button type="button" id="mic" class="icon-btn mic" aria-label="Speak your message" title="Speak your message">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3.5" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v2.5"/></svg>
+              </button>
+              <button type="submit" id="send" class="send" aria-label="Send" title="Send">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/></svg>
+              </button>
+            </div>
+          </div>
+        </form>
+        <div id="suggestions" class="suggestions"></div>
+        <p id="status" class="status" role="status"></p>
+      </div>
+    </section>
+
+    <!-- Settings panel -->
+    <aside id="settings-panel" class="usage-panel" aria-label="Settings" hidden>
+      <div class="usage-head">
+        <h2>Settings</h2>
+        <button id="close-settings" class="icon-btn" aria-label="Close settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <div id="install-box" hidden>
+        <h3 class="usage-sub">Install Ocean</h3>
+        <p class="muted small">Add Ocean to this device as an app, with its own icon and window.</p>
+        <button id="install-app" class="btn btn-primary small-btn">Install Ocean</button>
+      </div>
+      <h3 class="usage-sub">Chrome extension</h3>
+      <p class="muted small">Connect the Ocean extension to use Ocean beside any web page. Make a code, then type it into the extension. The code works once and lasts 10 minutes.</p>
+      <button id="make-code" class="btn btn-primary small-btn">Connect Chrome extension</button>
+      <div id="pair-box" class="pair-box" hidden>
+        <span class="muted small">Type this code into the extension:</span>
+        <code id="pair-code" class="pair-code"></code>
+        <span id="pair-expiry" class="muted tiny"></span>
+      </div>
+      <div id="desktop-settings" hidden>
+        <h3 class="usage-sub">This laptop</h3>
+        <p id="desktop-folders" class="muted small"></p>
+        <button id="desktop-open-settings" class="btn btn-ghost small-btn">Choose folders and laptop brain</button>
+      </div>
+      <h3 class="usage-sub">Connected devices</h3>
+      <div id="device-list"></div>
+    </aside>
+
+    <!-- Usage panel -->
+    <aside id="usage-panel" class="usage-panel" aria-label="Usage today" hidden>
+      <div class="usage-head">
+        <h2>Usage today</h2>
+        <button id="close-usage" class="icon-btn" aria-label="Close usage">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <p id="usage-reset" class="muted small"></p>
+      <div id="usage-list"></div>
+      <h3 class="usage-sub">Last 7 days</h3>
+      <div id="usage-history" class="history"></div>
+      <p class="muted tiny">Limits are free-tier figures checked on 19 November 2026 and can change. Cloudflare units are estimated.</p>
+    </aside>
+  </div>
+</body>
+</html>

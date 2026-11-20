@@ -1,0 +1,49 @@
+{
+  "name": "ocean-desktop",
+  "productName": "Ocean",
+  "version": "0.4.0",
+  "description": "Ocean for Windows",
+  "main": "main.js",
+  "author": "Gudani",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist:win": "node build/make-installer.js"
+  },
+  "build": {
+    "appId": "com.digivireo.ocean",
+    "productName": "Ocean",
+    "files": [
+      "main.js",
+      "preload.js",
+      "laptop.js",
+      "settings.html",
+      "settings.js",
+      "settings.css",
+      "icons/**",
+      "updater.js"
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "signAndEditExecutable": false
+    },
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    }
+  },
+  "devDependencies": {
+    "electron": "33.2.1",
+    "electron-builder": "25.1.8",
+    "resedit": "^2.0.3"
+  }
+}

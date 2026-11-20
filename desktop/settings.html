@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'">
+  <title>Ocean settings</title>
+  <link rel="stylesheet" href="settings.css">
+  <script src="settings.js" defer></script>
+</head>
+<body>
+  <header><img src="icons/icon.png" alt="" width="32" height="32"><h1>Ocean settings</h1></header>
+
+  <section>
+    <h2>Folders Ocean may use</h2>
+    <p class="muted">Ocean can read files in these folders, and save files there after you approve each one. It cannot see anything else on your laptop, and it can never delete, move or rename files.</p>
+    <ul id="folders" class="folders"></ul>
+    <button id="add-folder" class="btn">Add a folder</button>
+  </section>
+
+  <section>
+    <h2>Laptop brain (Ollama)</h2>
+    <p id="ollama-status" class="muted">Checking...</p>
+    <label for="model">Model to use</label>
+    <div class="row">
+      <input id="model" spellcheck="false">
+      <button id="save-model" class="btn ghost">Save</button>
+    </div>
+    <p class="muted small">Your GTX 1650 has 4 GB, so small models work best: llama3.2:3b, qwen2.5:3b or phi3:mini.</p>
+    <div id="ollama-help" class="help" hidden>
+      <p><strong>To set it up:</strong></p>
+      <ol>
+        <li>Install Ollama from <a href="#" id="ollama-link">ollama.com/download</a> and open it.</li>
+        <li>Open Terminal and run: <code id="pull-cmd">ollama pull llama3.2:3b</code></li>
+        <li>In Ocean, choose <strong>My laptop</strong> in the brain picker at the top.</li>
+      </ol>
+    </div>
+  </section>
+
+  <section>
+    <h2>Updates</h2>
+    <p id="update-status" class="muted">Ocean checks for updates by itself.</p>
+    <div class="row">
+      <button id="check-update" class="btn ghost">Check now</button>
+      <button id="install-update" class="btn" hidden>Restart to update</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Start with Windows</h2>
+    <label class="check"><input type="checkbox" id="open-at-login"> Start Ocean in the tray when I sign in to Windows</label>
+  </section>
+
+  <section>
+    <h2>Shortcut</h2>
+    <p class="muted">Press <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>O</kbd> anywhere to show or hide Ocean. Closing the window keeps Ocean in the tray; right-click the tray icon to quit.</p>
+  </section>
+  <p class="muted small" id="version"></p>
+</body>
+</html>

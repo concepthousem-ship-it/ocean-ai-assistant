@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ocean</title>
+  <link rel="stylesheet" href="sidepanel.css">
+  <script src="vendor/marked.js" defer></script>
+  <script src="vendor/purify.js" defer></script>
+  <script src="page.js" defer></script>
+  <script src="sidepanel.js" defer></script>
+</head>
+<body>
+  <!-- Connect -->
+  <main id="connect" class="connect" hidden>
+    <img src="icons/icon-128.png" alt="" width="56" height="56">
+    <h1>Connect Ocean</h1>
+    <p class="muted">In Ocean on the web, open <strong>Settings</strong> from the bottom of the chat list and choose <strong>Connect Chrome extension</strong>. Type the code it shows here.</p>
+    <form id="connect-form">
+      <label for="server">Ocean address</label>
+      <input id="server" type="url" required spellcheck="false" value="https://ocean.digivireo.com">
+      <label for="code">Pairing code</label>
+      <input id="code" class="code" required spellcheck="false" autocomplete="off" placeholder="ABCD-EFGH" maxlength="12">
+      <p id="connect-error" class="error" role="alert" hidden></p>
+      <button type="submit" class="btn">Connect</button>
+    </form>
+  </main>
+
+  <!-- Chat -->
+  <div id="chat" class="chat" hidden>
+    <header class="top">
+      <img src="icons/icon-32.png" alt="" width="22" height="22">
+      <h1 id="title">Ocean</h1>
+      <button id="history-btn" class="icon-btn" title="Recent chats" aria-label="Recent chats">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 12a8.5 8.5 0 1 0 2.5-6"/><path d="M3.5 4.5V9H8M12 7.5V12l3 2"/></svg>
+      </button>
+      <button id="new-btn" class="icon-btn" title="New chat" aria-label="New chat">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+      <button id="menu-btn" class="icon-btn" title="More" aria-label="More">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></svg>
+      </button>
+      <div id="menu" class="menu" hidden>
+        <button id="open-web">Open Ocean in a tab</button>
+        <button id="disconnect" class="danger">Disconnect this browser</button>
+      </div>
+    </header>
+
+    <div id="history" class="history" hidden></div>
+
+    <div id="scroller" class="scroller">
+      <div id="empty" class="empty">
+        <img src="icons/icon-128.png" alt="" width="48" height="48">
+        <h2>How can I help on this page?</h2>
+        <div class="starters" id="starters"></div>
+      </div>
+      <div id="messages" class="messages" aria-live="polite"></div>
+    </div>
+
+    <div class="dock">
+      <div id="page-chip" class="page-chip" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3.5H7.5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V8z"/><path d="M14 3.5V8h4.5"/></svg>
+        <span id="page-name"></span>
+      </div>
+      <form id="composer" class="composer">
+        <label for="input" class="sr-only">Message Ocean</label>
+        <textarea id="input" rows="1" placeholder="Ask about this page, or tell Ocean what to do"></textarea>
+        <div class="row">
+          <div class="toggles">
+            <button type="button" id="use-page" class="toggle" aria-pressed="true" title="Send this page to Ocean with your message">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3.5H7.5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V8z"/><path d="M14 3.5V8h4.5"/></svg>
+              Page
+            </button>
+            <button type="button" id="can-act" class="toggle" aria-pressed="false" title="Let Ocean click, type and fill forms on this page. It asks before anything that sends, saves, pays or deletes.">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11V5.5a1.5 1.5 0 0 1 3 0V11m0-1.5a1.5 1.5 0 0 1 3 0V11m0-.5a1.5 1.5 0 0 1 3 0v4a6 6 0 0 1-6 6h-.5a6 6 0 0 1-5-2.7L4 15a1.5 1.5 0 0 1 2.5-1.7L9 16"/></svg>
+              Act
+            </button>
+          </div>
+          <button type="submit" id="send" class="send" aria-label="Send" title="Send">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/></svg>
+          </button>
+          <button type="button" id="stop" class="send stop" aria-label="Stop" title="Stop" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/></svg>
+          </button>
+        </div>
+      </form>
+      <p id="status" class="status" role="status"></p>
+    </div>
+  </div>
+</body>
+</html>

@@ -16,6 +16,7 @@ Needs the access token (Authorization: Bearer <token>):
 - GET  /api/usage                      today's usage per provider, and history
 """
 
+import asyncio
 import json
 import re
 import secrets
@@ -43,6 +44,7 @@ from .db import (
     Conversation,
     GoogleLink,
     Image,
+    Job,
     NotionLink,
     Memory,
     PendingEvent,
@@ -60,6 +62,7 @@ from .voice import VoiceError, speak, speakable, transcribe
 from .tools import image_settings_from
 from .persona import OCEAN_SYSTEM_PROMPT
 from .memory import MEMORY_RULES, NEVER_STORE, MemoryStore, memory_out
+from .jobs import JOBS_RULES, check_alerts, job_out, jobs_for_model, load_prefs, morning_loop, save_prefs, search_urls, store_jobs
 from .notion import NOTION_RULES, NotionAccount, NotionError, TOKEN_RE as NOTION_TOKEN_RE, check_token, notion_link
 from .googleapps import DRIVE_RULES, GoogleAccount, GoogleError, auth_url, exchange_code, google_rules, has_drive, seal, REVOKE_URL
 from .devices import find_device, make_router as devices_router
@@ -123,6 +126,8 @@ class NewMessage(AskOptions):
     browser: bool = False
     # From the Windows app: Ocean may use the laptop tools.
     laptop: bool = False
+    # From the Chrome extension: Ocean may search LinkedIn jobs in Gudani's Chrome.
+    linkedin: bool = False
 
 
 class LocalReply(BaseModel):
@@ -288,7 +293,23 @@ def create_app(
         app.state.engine = make_engine(s.database_url)
         await create_tables(app.state.engine)
         app.state.sessions = make_sessionmaker(app.state.engine)
+
+        async def morning_google():
+            if not (s.google_client_id and s.google_client_secret):
+                return None
+            async with app.state.sessions() as db:
+                link = await db.scalar(select(GoogleLink).order_by(GoogleLink.id.desc()))
+            if link is None:
+                return None
+            return GoogleAccount(app.state.sessions, app.state.http, s.google_client_id, s.google_client_secret,
+                                 s.access_token, s.timezone, None, app.state.__dict__.setdefault("google_cache", {}),
+                                 has_drive(link.scopes))
+
+        app.state.google_for_app = morning_google
+        morning = asyncio.create_task(morning_loop(app, morning_google)) if s.jobs_morning else None
         yield
+        if morning is not None:
+            morning.cancel()
         await app.state.http.aclose()
         await app.state.engine.dispose()
 
@@ -438,6 +459,7 @@ def create_app(
         memory_context: str = "",
         google: GoogleAccount | None = None,
         notion: NotionAccount | None = None,
+        find_jobs: bool = False,
     ) -> AgentResult:
         s: Settings = request.app.state.settings
         system = OCEAN_SYSTEM_PROMPT
@@ -449,6 +471,8 @@ def create_app(
                 system += "\n\n" + DRIVE_RULES
         if notion is not None:
             system += "\n\n" + NOTION_RULES
+        if google is not None or find_jobs:
+            system += "\n\n" + JOBS_RULES
         if memory_context:
             system += "\n\n" + memory_context
         try:
@@ -467,6 +491,7 @@ def create_app(
                 memory=memory,
                 google=google,
                 notion=notion,
+                find_jobs=find_jobs,
             )
         except BrainError as err:
             raise HTTPException(err.status_code, str(err))
@@ -625,6 +650,7 @@ def create_app(
         conversation_id: int | None = None,
         memory: MemoryStore | None = None,
         google: GoogleAccount | None = None,
+        find_jobs: bool = False,
     ) -> AgentResult:
         if google is None:
             google = await google_for(request, private, conversation_id)
@@ -643,7 +669,7 @@ def create_app(
         convo = history + [{"role": "system", "content": h} for h in hints] + [user]
         return await run_brain(
             request, convo, options.brain, private, options.provider, options.model, browser, laptop,
-            memory, memory_context, google, await notion_for(request, private),
+            memory, memory_context, google, await notion_for(request, private), find_jobs,
         )
 
     def bot_message(conversation_id: int, result: AgentResult) -> Message:
@@ -702,7 +728,7 @@ def create_app(
             del store[key]
         return store
 
-    def pause(request: Request, run: dict, result: AgentResult) -> dict:
+    async def pause(request: Request, run: dict, result: AgentResult) -> dict:
         """Keep the paused turn and hand the browser actions to the extension."""
         store = runs(request)
         if len(store) >= MAX_RUNS:
@@ -722,7 +748,16 @@ def create_app(
                 args = json.loads(call.arguments or "{}")
             except ValueError:
                 args = {}
-            actions.append({"id": call.id, "name": call.name, "arguments": args if isinstance(args, dict) else {}})
+            args = args if isinstance(args, dict) else {}
+            if call.name == "find_linkedin_jobs":
+                # The extension gets the exact LinkedIn searches from Gudani's job settings.
+                prefs = await load_prefs(request.app.state.sessions)
+                try:
+                    hours = int(args.get("hours") or prefs["hours"])
+                except (TypeError, ValueError):
+                    hours = prefs["hours"]
+                args = {"searches": search_urls(prefs, hours), "hours": hours}
+            actions.append({"id": call.id, "name": call.name, "arguments": args})
         return {"status": "actions", "run_id": run_id, "note": result.reply.content or "", "actions": actions}
 
     @app.post(
@@ -767,7 +802,7 @@ def create_app(
         google = await google_for(request, private, conversation_id)
         result = await ask(
             request, history, {"role": "user", "content": user_for_model}, private, body, rules,
-            browser, body.laptop, conversation_id, memory, google,
+            browser, body.laptop, conversation_id, memory, google, body.linkedin,
         )
         if result.pending is not None:
             run = {
@@ -784,7 +819,7 @@ def create_app(
                 "memory": memory,
                 "google": google,
             }
-            return pause(request, run, result)
+            return await pause(request, run, result)
         return await save_turn(
             request, conversation_id, body.content, attachments, user_steps, result, not history_rows
         )
@@ -800,6 +835,16 @@ def create_app(
         results = {
             r.id: action_result_for_model(r.ok, r.message, r.page) for r in body.results if r.id in wanted
         }
+        found_jobs: dict[str, list] = {}
+        for r in body.results:
+            if r.id in wanted and r.report and r.report.get("kind") == "linkedin_jobs":
+                prefs = await load_prefs(request.app.state.sessions)
+                items = [j for j in (r.report.get("jobs") or []) if isinstance(j, dict)][:300]
+                new = await store_jobs(request.app.state.sessions, items, "search", prefs["title_words"])
+                found_jobs[r.id] = new
+                note = f" {r.message[:300]}" if r.message else ""
+                results[r.id] = jobs_for_model(new, len(items)) + note
+                r.report = None
         run["actions_done"] += len(results)
         s: Settings = request.app.state.settings
         try:
@@ -814,12 +859,15 @@ def create_app(
         ok_by_id = {r.id: r.ok for r in body.results if r.id in wanted}
         reports = {r.id: clean_report(r.report) for r in body.results if r.id in wanted and r.report}
         for step in result.steps:
+            if step.get("type") == "action" and step.get("id") in found_jobs:
+                step["jobs"] = found_jobs[step["id"]]
+        for step in result.steps:
             if step.get("type") == "action" and step.get("id") in ok_by_id:
                 step["ok"] = ok_by_id[step["id"]]
                 if step["id"] in reports:
                     step["report"] = reports[step["id"]]
         if result.pending is not None:
-            return pause(request, run, result)
+            return await pause(request, run, result)
         return await save_turn(
             request, run["conversation_id"], run["content"], run["attachments"],
             run["user_steps"], result, run["first_message"],
@@ -978,6 +1026,61 @@ def create_app(
             await db.commit()
         request.app.state.__dict__.get("google_cache", {}).clear()
         return {"connected": False}
+
+    # --- Jobs ----------------------------------------------------------------
+
+    class JobPrefsIn(BaseModel):
+        searches: list[str] = Field(default_factory=list, max_length=8)
+        title_words: list[str] = Field(default_factory=list, max_length=40)
+        location: str = Field(default="South Africa", max_length=100)
+        hours: int = Field(default=24, ge=1, le=168)
+        morning_hour: int = Field(default=7, ge=0, le=23)
+
+    class JobPatch(BaseModel):
+        status: Literal["new", "applied", "hidden"]
+
+    @app.get("/api/jobs", dependencies=[Depends(require_token)])
+    async def list_jobs(request: Request, show: Literal["open", "applied", "all"] = "open") -> dict:
+        stmt = select(Job).order_by(Job.found_at.desc(), Job.id.desc()).limit(300)
+        if show == "open":
+            stmt = stmt.where(Job.status == "new")
+        elif show == "applied":
+            stmt = stmt.where(Job.status == "applied")
+        async with request.app.state.sessions() as db:
+            rows = list(await db.scalars(stmt))
+            new_count = await db.scalar(select(func.count(Job.id)).where(Job.status == "new"))
+        return {"jobs": [job_out(j) for j in rows], "open": new_count or 0}
+
+    @app.patch("/api/jobs/{job_id}", dependencies=[Depends(require_token)])
+    async def update_job(job_id: int, body: JobPatch, request: Request) -> dict:
+        async with request.app.state.sessions() as db:
+            j = await db.get(Job, job_id)
+            if j is None:
+                raise HTTPException(404, "That job was not found.")
+            j.status = body.status
+            await db.commit()
+            return job_out(j)
+
+    @app.get("/api/jobs/settings", dependencies=[Depends(require_token)])
+    async def job_settings(request: Request) -> dict:
+        prefs = await load_prefs(request.app.state.sessions)
+        return {**prefs, "links": search_urls(prefs)}
+
+    @app.put("/api/jobs/settings", dependencies=[Depends(require_owner)])
+    async def set_job_settings(body: JobPrefsIn, request: Request) -> dict:
+        prefs = await save_prefs(request.app.state.sessions, body.model_dump())
+        return {**prefs, "links": search_urls(prefs)}
+
+    @app.post("/api/jobs/check-alerts", dependencies=[Depends(require_token)])
+    async def check_job_alerts_now(request: Request) -> dict:
+        google = await request.app.state.google_for_app()
+        if google is None:
+            raise HTTPException(409, "Connect Google in Settings first, so Ocean can read your job alert emails.")
+        try:
+            new, seen = await check_alerts(request.app.state.sessions, google)
+        except GoogleError as err:
+            raise HTTPException(err.status_code if err.status_code < 500 else 502, str(err))
+        return {"new": new, "seen": seen}
 
     # --- Notion --------------------------------------------------------------
 

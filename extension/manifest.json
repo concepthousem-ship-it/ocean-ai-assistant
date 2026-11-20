@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Ocean",
-  "version": "0.1.1",
-  "description": "Gudani's assistant Ocean in Chrome's side panel: chat, read the page, fill forms and act on pages with your approval.",
+  "version": "0.2.0",
+  "description": "Gudani's assistant Ocean in Chrome's side panel: chat, read the page, fill forms with approval, and find LinkedIn jobs.",
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",
@@ -22,12 +22,22 @@
   "background": {
     "service_worker": "background.js"
   },
-  "permissions": ["sidePanel", "storage", "scripting", "tabs", "contextMenus"],
-  "host_permissions": ["<all_urls>"],
+  "permissions": [
+    "sidePanel",
+    "storage",
+    "scripting",
+    "tabs",
+    "contextMenus"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
   "minimum_chrome_version": "116",
   "commands": {
     "_execute_action": {
-      "suggested_key": { "default": "Alt+O" },
+      "suggested_key": {
+        "default": "Alt+O"
+      },
       "description": "Open Ocean"
     }
   }

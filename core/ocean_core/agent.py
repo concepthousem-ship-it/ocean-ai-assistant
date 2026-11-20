@@ -15,11 +15,12 @@ from .brains import BrainReply, Recorder, ToolCall, _noop, ask_brain
 from .browser import BROWSER_TOOL_NAMES, BROWSER_TOOLS, describe_action
 from .laptop import LAPTOP_TOOL_NAMES, LAPTOP_TOOLS
 
-CLIENT_TOOL_NAMES = BROWSER_TOOL_NAMES | LAPTOP_TOOL_NAMES
+CLIENT_TOOL_NAMES = BROWSER_TOOL_NAMES | LAPTOP_TOOL_NAMES | {"find_linkedin_jobs"}
 from .config import Settings
 from .googleapps import DRIVE_TOOLS, GOOGLE_TOOLS
 from .memory import MEMORY_TOOLS
 from .notion import NOTION_TOOLS
+from .jobs import CHECK_ALERTS_TOOL, FIND_JOBS_TOOL
 from .tools import IMAGE_TOOL, TOOL_SPECS, ImageSaver, ToolContext, image_settings_from, run_tool
 
 MAX_CALLS_PER_TURN = 4
@@ -70,10 +71,13 @@ def tools_for(settings: Settings, brain: str, can_save_images: bool = True, memo
             tools.extend(DRIVE_TOOLS)
     if notion:
         tools.extend(NOTION_TOOLS)
+    if google:
+        tools.append(CHECK_ALERTS_TOOL)
     return tools
 
 
 def _ctx(settings: Settings, client, record, save_image, memory=None, google=None, notion=None) -> ToolContext:
+    jobs = (memory.sessions, google) if (memory is not None and google is not None) else None
     return ToolContext(
         client=client,
         search_providers=settings.search_providers,
@@ -83,6 +87,7 @@ def _ctx(settings: Settings, client, record, save_image, memory=None, google=Non
         memory=memory,
         google=google,
         notion=notion,
+        jobs=jobs,
     )
 
 
@@ -101,8 +106,11 @@ async def run_agent(
     memory=None,
     google=None,
     notion=None,
+    find_jobs: bool = False,
 ) -> AgentResult:
     tools = tools_for(settings, brain, save_image is not None, memory is not None, google, notion)
+    if find_jobs and brain == "cloud" and settings.tools_enabled:
+        tools = tools + [FIND_JOBS_TOOL]
     max_steps = settings.max_tool_steps
     if brain == "cloud" and settings.tools_enabled and (browser or laptop):
         if browser:

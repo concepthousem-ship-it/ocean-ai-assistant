@@ -413,6 +413,7 @@ class ToolContext:
     memory: object | None = None  # a memory.MemoryStore
     google: object | None = None  # a googleapps.GoogleAccount
     notion: object | None = None  # a notion.NotionAccount
+    jobs: object | None = None  # (sessions, GoogleAccount) for check_job_alerts
 
 
 # --- Running a tool call from the model ----------------------------------------------
@@ -447,6 +448,19 @@ async def run_tool(name: str, raw_arguments: str, ctx: ToolContext) -> ToolResul
 
         content, step = await run_notion_tool(name, args, ctx.notion)
         return ToolResult(content, step)
+
+    if name == "check_job_alerts":
+        if ctx.jobs is None:
+            return ToolResult("Error: Google is not connected, so Ocean cannot read job alert emails.", {"type": "error", "tool": name})
+        from .googleapps import GoogleError
+        from .jobs import check_alerts, jobs_for_model
+
+        sessions, google = ctx.jobs
+        try:
+            new, seen = await check_alerts(sessions, google)
+        except GoogleError as err:
+            return ToolResult(f"Error: {err}", {"type": "error", "tool": name, "message": str(err)})
+        return ToolResult(jobs_for_model(new, seen), {"type": "jobs", "source": "alert", "seen": seen, "jobs": new})
 
     if name in ("remember", "recall_memory", "forget_memory"):
         if ctx.memory is None:

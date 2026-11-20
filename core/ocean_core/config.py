@@ -94,6 +94,8 @@ class Settings:
     google_client_secret: str = ""
     public_url: str = "https://ocean.digivireo.com"
     timezone: str = "Africa/Johannesburg"
+    # Check LinkedIn job alert emails every morning.
+    jobs_morning: bool = False
 
 
 @dataclass(frozen=True)
@@ -190,4 +192,5 @@ def load_settings() -> Settings:
         google_client_secret=_env("OCEAN_GOOGLE_CLIENT_SECRET"),
         public_url=_env("OCEAN_PUBLIC_URL", "https://ocean.digivireo.com").rstrip("/"),
         timezone=_env("OCEAN_TIMEZONE", "Africa/Johannesburg"),
+        jobs_morning=_flag("OCEAN_JOBS_MORNING", True),
     )

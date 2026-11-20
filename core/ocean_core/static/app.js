@@ -593,6 +593,7 @@ function renderBotMessage(message, isLast) {
   for (const step of steps) {
     if (step.type === "memory" && step.id) content.appendChild(renderMemoryCard(step));
     if (step.type === "event" && step.id) content.appendChild(renderEventCard(step));
+    if ((step.type === "jobs" || step.type === "action") && Array.isArray(step.jobs)) content.appendChild(renderJobsFound(step.jobs));
     if (step.type === "forgot" && step.items && step.items.length) {
       const card = el("div", "memory-card deleted");
       card.appendChild(icon("brain"));
@@ -1705,6 +1706,139 @@ function closeUsage() {
   $("gauge").focus();
 }
 
+/* --- Jobs ---------------------------------------------------------------------------- */
+
+const jobsState = { show: "open" };
+
+function safeJobUrl(url) {
+  return /^https:\/\/www\.linkedin\.com\/jobs\/view\/\d+\/?$/.test(url || "") ? url : null;
+}
+
+function renderJobsFound(jobs) {
+  const box = el("div", "job-found");
+  box.appendChild(el("strong", "", jobs.length ? `${jobs.length} new ${jobs.length === 1 ? "job" : "jobs"} (also in the Jobs panel)` : "No new jobs this time"));
+  if (jobs.length) {
+    const ol = document.createElement("ol");
+    for (const j of jobs) {
+      const li = document.createElement("li");
+      const url = safeJobUrl(j.url);
+      const a = el(url ? "a" : "span", "", j.title);
+      if (url) { a.href = url; a.target = "_blank"; a.rel = "noopener noreferrer"; }
+      li.appendChild(a);
+      const meta = [j.company, j.location].filter(Boolean).join(", ");
+      if (meta) li.append(` ${meta}`);
+      ol.appendChild(li);
+    }
+    box.appendChild(ol);
+  }
+  return box;
+}
+
+async function refreshJobsBadge() {
+  try {
+    const { open } = await api("/api/jobs?show=open");
+    $("jobs-badge").hidden = !open;
+    $("jobs-badge").textContent = open > 99 ? "99+" : String(open);
+    return open;
+  } catch (_) { return 0; }
+}
+
+async function openJobs() {
+  $("jobs-panel").hidden = false;
+  closeSidebar();
+  $("close-jobs").focus();
+  await Promise.all([renderJobs(), renderJobSettings()]);
+}
+function closeJobs() { $("jobs-panel").hidden = true; $("jobs-link").focus(); }
+
+async function renderJobs() {
+  const box = $("jobs-list");
+  document.querySelectorAll(".jobs-tab").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.show === jobsState.show)));
+  let data;
+  try { data = await api(`/api/jobs?show=${jobsState.show}`); } catch (err) { $("jobs-status").textContent = err.message; return; }
+  $("jobs-badge").hidden = !data.open;
+  $("jobs-badge").textContent = data.open > 99 ? "99+" : String(data.open);
+  box.replaceChildren();
+  if (!data.jobs.length) {
+    box.appendChild(el("p", "memory-empty", jobsState.show === "open"
+      ? "Nothing new to look at. Ocean checks your LinkedIn alert emails every morning, or ask it in the Chrome extension to \"find me jobs\"."
+      : "Nothing here yet."));
+    return;
+  }
+  for (const j of data.jobs) box.appendChild(jobRow(j));
+}
+
+function jobRow(j) {
+  const row = el("div", "job");
+  const url = safeJobUrl(j.url);
+  const title = el(url ? "a" : "span", "job-title", j.title);
+  if (url) { title.href = url; title.target = "_blank"; title.rel = "noopener noreferrer"; }
+  row.appendChild(title);
+  const found = j.found_at ? new Date(j.found_at).toLocaleDateString("en-ZA", { day: "numeric", month: "short" }) : "";
+  const meta = [j.company, j.location, j.posted, `found ${found}${j.source === "alert" ? " in alert email" : " by search"}`].filter(Boolean).join(" · ");
+  row.appendChild(el("span", "job-meta", meta));
+  const actions = el("div", "job-actions");
+  const applied = el("button", j.status === "applied" ? "applied" : "", j.status === "applied" ? "Applied" : "Mark applied");
+  applied.type = "button";
+  applied.addEventListener("click", async () => {
+    try { await api(`/api/jobs/${j.id}`, { method: "PATCH", body: { status: j.status === "applied" ? "new" : "applied" } }); renderJobs(); }
+    catch (err) { $("jobs-status").textContent = err.message; }
+  });
+  const hide = el("button", "", j.status === "hidden" ? "Show again" : "Not for me");
+  hide.type = "button";
+  hide.addEventListener("click", async () => {
+    try { await api(`/api/jobs/${j.id}`, { method: "PATCH", body: { status: j.status === "hidden" ? "new" : "hidden" } }); renderJobs(); }
+    catch (err) { $("jobs-status").textContent = err.message; }
+  });
+  actions.append(applied, hide);
+  row.appendChild(actions);
+  return row;
+}
+
+async function renderJobSettings() {
+  let p;
+  try { p = await api("/api/jobs/settings"); } catch (err) { return; }
+  $("jobs-searches").value = p.searches.join("\n");
+  $("jobs-words").value = p.title_words.join(", ");
+  $("jobs-location").value = p.location;
+  $("jobs-hours").value = p.hours;
+  $("jobs-morning").value = p.morning_hour;
+  const ul = $("jobs-links");
+  ul.replaceChildren();
+  for (const l of p.links) {
+    const li = document.createElement("li");
+    const a = el("a", "", l.name);
+    a.href = l.url; a.target = "_blank"; a.rel = "noopener noreferrer";
+    li.appendChild(a);
+    ul.appendChild(li);
+  }
+}
+
+async function saveJobSettings(e) {
+  e.preventDefault();
+  const body = {
+    searches: $("jobs-searches").value.split("\n").map((x) => x.trim()).filter(Boolean),
+    title_words: $("jobs-words").value.split(",").map((x) => x.trim()).filter(Boolean),
+    location: $("jobs-location").value.trim() || "South Africa",
+    hours: Number($("jobs-hours").value) || 24,
+    morning_hour: Number($("jobs-morning").value) || 7,
+  };
+  try { await api("/api/jobs/settings", { method: "PUT", body }); $("jobs-status").textContent = "Job settings saved."; renderJobSettings(); }
+  catch (err) { $("jobs-status").textContent = err.message; }
+}
+
+async function checkAlertsNow() {
+  $("jobs-status").textContent = "Reading your LinkedIn alert emails...";
+  try {
+    const r = await api("/api/jobs/check-alerts", { method: "POST" });
+    $("jobs-status").textContent = r.seen
+      ? `Checked ${r.seen} posts from alert emails: ${r.new.length} new ${r.new.length === 1 ? "match" : "matches"}.`
+      : "No LinkedIn job alert emails from the last two days. Set up alerts with the links under Job settings.";
+    jobsState.show = "open";
+    renderJobs();
+  } catch (err) { $("jobs-status").textContent = err.message; }
+}
+
 /* --- Memory panel ---------------------------------------------------------------- */
 
 const KIND_LABEL = { client: "Client", project: "Project", me: "About you" };
@@ -2094,6 +2228,7 @@ async function start(username) {
   buildRouteOptions();
   try { await refreshConversations(); } catch (err) { setStatus(err.message); }
   googleReturnMessage();
+  refreshJobsBadge().then((n) => { if (n && !$("status").textContent) setStatus(`${n} new ${n === 1 ? "job" : "jobs"} to look at in the Jobs panel.`); });
   refreshUsage();
   if (!coarsePointer()) $("input").focus();
 }
@@ -2292,6 +2427,11 @@ function wire() {
   $("usage-link").addEventListener("click", openUsage);
   $("settings-link").addEventListener("click", openSettings);
   $("memory-link").addEventListener("click", openMemory);
+  $("jobs-link").addEventListener("click", openJobs);
+  $("close-jobs").addEventListener("click", closeJobs);
+  $("jobs-check").addEventListener("click", checkAlertsNow);
+  $("jobs-form").addEventListener("submit", saveJobSettings);
+  document.querySelectorAll(".jobs-tab").forEach((b) => b.addEventListener("click", () => { jobsState.show = b.dataset.show; renderJobs(); }));
   $("google-connect").addEventListener("click", connectGoogle);
   $("google-disconnect").addEventListener("click", disconnectGoogle);
   $("notion-form").addEventListener("submit", connectNotion);
@@ -2308,7 +2448,8 @@ function wire() {
   $("close-usage").addEventListener("click", closeUsage);
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
-    if (!$("memory-panel").hidden) closeMemory();
+    if (!$("jobs-panel").hidden) closeJobs();
+    else if (!$("memory-panel").hidden) closeMemory();
     else if (!$("settings-panel").hidden) closeSettings();
     else if (!$("usage-panel").hidden) closeUsage();
     else if (!$("chat-menu").hidden) toggleMenu(false);

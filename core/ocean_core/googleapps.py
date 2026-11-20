@@ -293,6 +293,23 @@ class GoogleAccount:
                 "subject": h.get("subject", ""), "date": h.get("date", ""), "message_id": h.get("message-id", ""),
                 "body": body[:MAX_BODY_CHARS], "cut": len(body) > MAX_BODY_CHARS}
 
+    async def read_html(self, message_id: str) -> str:
+        """The HTML part of an email (or its text, if it has no HTML)."""
+        if not re.fullmatch(r"[A-Za-z0-9_-]{6,64}", message_id or ""):
+            raise GoogleError("That email id is not valid.", 400)
+        m = await self._call("GET", f"{GMAIL}/messages/{message_id}", params={"format": "full"})
+        found: list[str] = []
+
+        def walk(p: dict) -> None:
+            data = (p.get("body") or {}).get("data")
+            if data and p.get("mimeType") == "text/html":
+                found.append(_decode(data))
+            for child in p.get("parts", []) or []:
+                walk(child)
+
+        walk(m.get("payload", {}))
+        return "\n".join(found) or html.escape(_body_text(m.get("payload", {})))
+
     async def draft(self, to: str, subject: str, body: str, reply_to_id: str = "") -> dict:
         addresses = [a.strip() for a in (to or "").split(",") if a.strip()]
         if not addresses or len(addresses) > 20 or not all(EMAIL_RE.match(parseaddr(a)[1] or "") for a in addresses):

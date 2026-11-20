@@ -203,6 +203,32 @@ class GoogleLink(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class Job(Base):
+    """A job post Ocean found for Gudani (from LinkedIn alert emails or a Chrome search)."""
+
+    __tablename__ = "jobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    job_key: Mapped[str] = mapped_column(String(80), unique=True, index=True)  # linkedin:<id>
+    title: Mapped[str] = mapped_column(String(300))
+    company: Mapped[str] = mapped_column(String(300), default="")
+    location: Mapped[str] = mapped_column(String(300), default="")
+    url: Mapped[str] = mapped_column(Text)
+    posted: Mapped[str] = mapped_column(String(100), default="")
+    source: Mapped[str] = mapped_column(String(20), default="search")  # alert or search
+    status: Mapped[str] = mapped_column(String(20), default="new", index=True)  # new, applied, hidden
+    found_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
+class AppSetting(Base):
+    """Small settings Gudani can change in Ocean, stored as JSON text."""
+
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(80), primary_key=True)
+    value: Mapped[str] = mapped_column(Text)
+
+
 class NotionLink(Base):
     """Gudani's Notion integration token, encrypted."""
 

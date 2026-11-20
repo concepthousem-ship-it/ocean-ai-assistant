@@ -253,6 +253,7 @@ function describe(action) {
     case "scroll": return `Scroll ${a.direction || ""}`;
     case "open_url": return `Open ${String(a.url || "").slice(0, 100)}`;
     case "read_page": return "Read the page again";
+    case "find_linkedin_jobs": return `Find LinkedIn jobs (${(a.searches || []).length} searches, last ${a.hours || 24} hours)`;
     default: return action.name;
   }
 }
@@ -292,7 +293,14 @@ function askApproval(liveBox, action) {
 
 /* --- Carrying out actions --------------------------------------------------------- */
 
-async function runAction(tabId, action) {
+async function runAction(tabId, action, progress = () => {}) {
+  if (action.name === "find_linkedin_jobs") {
+    try {
+      return await findLinkedInJobs(action.arguments || {}, progress);
+    } catch (err) {
+      return { ok: false, message: `Could not search LinkedIn: ${String(err && err.message || err).slice(0, 300)}` };
+    }
+  }
   if (action.name === "open_url") {
     const url = String((action.arguments || {}).url || "");
     if (!/^https?:\/\//i.test(url)) return { ok: false, message: "Only http and https addresses can be opened." };
@@ -370,7 +378,7 @@ async function send(text) {
     }
     let result = await api(`/api/conversations/${state.conv.id}/messages`, {
       method: "POST",
-      body: { content: text, page: page || undefined, browser: act },
+      body: { content: text, page: page || undefined, browser: act, linkedin: true },
     });
     $("input").value = "";
     autosize();
@@ -395,7 +403,7 @@ async function send(text) {
             continue;
           }
         }
-        const done = await runAction(tab.id, action);
+        const done = await runAction(tab && tab.id, action, (text) => { live.label.textContent = text; });
         if (!done.ok) { line.className = "bad"; line.textContent += ` (${done.message})`; }
         results.push({ id: action.id, ...done });
       }
@@ -407,7 +415,7 @@ async function send(text) {
         renderAll();
         return;
       }
-      latest = await snapshot(tab.id);
+      latest = tab && readable(tab) ? await snapshot(tab.id) : null;
       if (results.length && latest) results[results.length - 1].page = latest;
       live.label.textContent = "Thinking";
       result = await api(`/api/runs/${state.runId}/continue`, { method: "POST", body: { results } });

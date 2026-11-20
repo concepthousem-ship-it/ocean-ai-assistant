@@ -636,3 +636,30 @@ a.file-chip:hover { border-color: #C9D5EC; }
 .notion-form input { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); }
 .notion-form .small-btn { align-self: flex-start; }
 .event-card .memory-text a { color: var(--accent-strong); font-weight: 600; margin-left: 6px; }
+
+/* --- Jobs ------------------------------------------------------------------------------ */
+.side-badge { margin-left: auto; min-width: 20px; padding: 1px 7px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 12px; font-weight: 600; text-align: center; }
+.jobs-panel { width: min(460px, 100%); }
+.jobs-tabs { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 12px 0 4px; }
+.jobs-tab { font: inherit; font-size: 13.5px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg); cursor: pointer; color: var(--ink); }
+.jobs-tab[aria-pressed="true"] { background: var(--accent-wash); border-color: transparent; color: var(--accent-strong); font-weight: 600; }
+#jobs-check { margin-left: auto; }
+.jobs-list { display: flex; flex-direction: column; }
+.job { padding: 12px 0; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 3px; }
+.job a.job-title { font-weight: 600; color: var(--ink); text-decoration: none; }
+.job a.job-title:hover { color: var(--accent-strong); text-decoration: underline; }
+.job .job-meta { color: var(--ink-soft); font-size: 13.5px; }
+.job .job-actions { display: flex; gap: 6px; margin-top: 4px; }
+.job .job-actions button { font: inherit; font-size: 12.5px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg); cursor: pointer; color: var(--ink); }
+.job .job-actions button.applied { background: var(--accent); border-color: var(--accent); color: #fff; }
+.jobs-settings { margin-top: 18px; }
+.jobs-settings summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+.jobs-settings label { display: flex; flex-direction: column; gap: 4px; color: var(--ink-soft); }
+.jobs-settings .memory-form-row { flex-wrap: wrap; }
+.jobs-settings .memory-form-row input { width: 100%; }
+.jobs-links { padding-left: 18px; font-size: 13.5px; }
+.jobs-links li { margin: 4px 0; overflow-wrap: anywhere; }
+.job-found { margin: 10px 0 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); font-size: 14px; }
+.job-found ol { margin: 6px 0 0; padding-left: 20px; }
+.job-found li { margin: 3px 0; }
+.job-found a { color: var(--accent-strong); font-weight: 600; }

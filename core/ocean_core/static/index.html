@@ -6,20 +6,20 @@
   <meta name="color-scheme" content="light">
   <meta name="theme-color" content="#FFFFFF">
   <title>Ocean</title>
-  <link rel="icon" href="icon.svg?v=13" type="image/svg+xml">
+  <link rel="icon" href="icon.svg?v=14" type="image/svg+xml">
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/pwa/apple-touch-icon.png">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="application-name" content="Ocean">
-  <link rel="stylesheet" href="app.css?v=13">
-  <script src="vendor/marked.js?v=13" defer></script>
-  <script src="vendor/purify.js?v=13" defer></script>
-  <script src="app.js?v=13" defer></script>
+  <link rel="stylesheet" href="app.css?v=14">
+  <script src="vendor/marked.js?v=14" defer></script>
+  <script src="vendor/purify.js?v=14" defer></script>
+  <script src="app.js?v=14" defer></script>
 </head>
 <body>
   <!-- ===== Sign in and setup ===== -->
   <main id="auth" class="auth" hidden>
-    <div class="auth-brand"><img src="icon.svg?v=13" alt="" width="44" height="44"><span>Ocean</span></div>
+    <div class="auth-brand"><img src="icon.svg?v=14" alt="" width="44" height="44"><span>Ocean</span></div>
 
     <form id="signin-form" class="auth-card" hidden>
       <h1>Welcome back</h1>
@@ -83,7 +83,7 @@
     <aside id="sidebar" class="sidebar" aria-label="Chats">
       <div class="side-top">
         <a href="#" id="home-link" class="brand" aria-label="Ocean, start a new chat">
-          <img src="icon.svg?v=13" alt="" width="28" height="28"><span>Ocean</span>
+          <img src="icon.svg?v=14" alt="" width="28" height="28"><span>Ocean</span>
         </a>
         <button id="collapse-sidebar" class="icon-btn" aria-label="Hide chat list" title="Hide chat list">
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3"/><path d="M9.5 4.5v15"/></svg>
@@ -103,6 +103,10 @@
         <button id="usage-link" class="side-row">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg>
           Usage
+        </button>
+        <button id="jobs-link" class="side-row">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="7" width="17" height="12.5" rx="2.5"/><path d="M8.5 7V5.5a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2V7M3.5 12.5h17"/></svg>
+          Jobs <span id="jobs-badge" class="side-badge" hidden></span>
         </button>
         <button id="memory-link" class="side-row">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4.5a3 3 0 0 0-3 3 3 3 0 0 0-2 5.2A3.5 3.5 0 0 0 8.5 19H12V4.5z"/><path d="M15 4.5a3 3 0 0 1 3 3 3 3 0 0 1 2 5.2 3.5 3.5 0 0 1-4.5 6.3H12"/></svg>
@@ -157,7 +161,7 @@
       <div id="scroller" class="scroller">
         <!-- Start screen -->
         <div id="welcome" class="welcome">
-          <img src="icon.svg?v=13" alt="" width="76" height="76" class="welcome-logo">
+          <img src="icon.svg?v=14" alt="" width="76" height="76" class="welcome-logo">
           <h1 id="greeting" class="greeting">Good day</h1>
           <p class="welcome-sub">What are we working on?</p>
         </div>
@@ -209,6 +213,42 @@
         <p id="status" class="status" role="status"></p>
       </div>
     </section>
+
+    <!-- Jobs panel -->
+    <aside id="jobs-panel" class="usage-panel jobs-panel" aria-label="Jobs" hidden>
+      <div class="usage-head">
+        <h2>Jobs</h2>
+        <button id="close-jobs" class="icon-btn" aria-label="Close jobs">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <p class="muted small">LinkedIn jobs Ocean found for you. You apply; Ocean never does. Every morning it reads your LinkedIn job alert emails, and in the Chrome extension you can ask it to "find me jobs".</p>
+      <div class="jobs-tabs" role="group" aria-label="Show">
+        <button type="button" class="jobs-tab" data-show="open" aria-pressed="true">To look at</button>
+        <button type="button" class="jobs-tab" data-show="applied" aria-pressed="false">Applied</button>
+        <button type="button" class="jobs-tab" data-show="all" aria-pressed="false">All</button>
+        <button type="button" id="jobs-check" class="btn btn-ghost small-btn">Check alert emails now</button>
+      </div>
+      <p id="jobs-status" class="muted small" role="status"></p>
+      <div id="jobs-list" class="jobs-list"></div>
+      <details class="jobs-settings">
+        <summary>Job settings</summary>
+        <form id="jobs-form" class="memory-form">
+          <label class="small" for="jobs-searches">LinkedIn searches, one per line</label>
+          <textarea id="jobs-searches" rows="4"></textarea>
+          <label class="small" for="jobs-words">Keep jobs whose title has one of these words (comma separated)</label>
+          <textarea id="jobs-words" rows="3"></textarea>
+          <div class="memory-form-row">
+            <label class="small" for="jobs-location">Location <input id="jobs-location" maxlength="100"></label>
+            <label class="small" for="jobs-hours">Posted within (hours) <input id="jobs-hours" type="number" min="1" max="168"></label>
+            <label class="small" for="jobs-morning">Morning check at <input id="jobs-morning" type="number" min="0" max="23"></label>
+          </div>
+          <button type="submit" class="btn btn-primary small-btn">Save job settings</button>
+        </form>
+        <p class="muted small">Set up the daily alert emails once: open each search below in LinkedIn and switch on <strong>Set alert</strong> (daily, email).</p>
+        <ul id="jobs-links" class="jobs-links"></ul>
+      </details>
+    </aside>
 
     <!-- Memory panel -->
     <aside id="memory-panel" class="usage-panel" aria-label="Memory" hidden>
@@ -313,7 +353,7 @@
     </div>
     <button type="button" id="voice-orb" class="voice-orb" data-state="idle" aria-describedby="voice-hint">
       <span class="voice-ring" aria-hidden="true"></span>
-      <img src="icon.svg?v=13" alt="" width="132" height="132">
+      <img src="icon.svg?v=14" alt="" width="132" height="132">
     </button>
     <p id="voice-state" class="voice-state" aria-live="polite">Starting...</p>
     <p id="voice-hint" class="voice-hint"></p>

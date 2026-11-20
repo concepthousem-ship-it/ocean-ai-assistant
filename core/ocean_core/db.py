@@ -191,6 +191,31 @@ class Memory(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class GoogleLink(Base):
+    """Gudani's connected Google account. The refresh token is encrypted."""
+
+    __tablename__ = "google_links"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    email: Mapped[str] = mapped_column(String(320))
+    refresh_token: Mapped[str] = mapped_column(Text)
+    scopes: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class PendingEvent(Base):
+    """A calendar event Ocean suggested. It is only added when Gudani taps Add."""
+
+    __tablename__ = "pending_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    conversation_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    data: Mapped[str] = mapped_column(Text)  # JSON: title, start, end, all_day, location, description
+    status: Mapped[str] = mapped_column(String(20), default="proposed")
+    link: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 def async_url(url: str) -> str:
     """Turn the address Railway gives into one the async drivers accept."""
     if url.startswith("postgres://"):

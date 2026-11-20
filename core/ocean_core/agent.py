@@ -17,6 +17,7 @@ from .laptop import LAPTOP_TOOL_NAMES, LAPTOP_TOOLS
 
 CLIENT_TOOL_NAMES = BROWSER_TOOL_NAMES | LAPTOP_TOOL_NAMES
 from .config import Settings
+from .googleapps import GOOGLE_TOOLS
 from .memory import MEMORY_TOOLS
 from .tools import IMAGE_TOOL, TOOL_SPECS, ImageSaver, ToolContext, image_settings_from, run_tool
 
@@ -53,7 +54,7 @@ def image_settings(settings: Settings):
     return image_settings_from(cloudflare.base_url, cloudflare.api_key, settings.image_model)
 
 
-def tools_for(settings: Settings, brain: str, can_save_images: bool = True, memory: bool = False) -> list[dict]:
+def tools_for(settings: Settings, brain: str, can_save_images: bool = True, memory: bool = False, google: bool = False) -> list[dict]:
     if brain != "cloud" or not settings.tools_enabled:
         return []
     have_search = any(p.configured for p in settings.search_providers)
@@ -62,10 +63,12 @@ def tools_for(settings: Settings, brain: str, can_save_images: bool = True, memo
         tools.append(IMAGE_TOOL)
     if memory:
         tools.extend(MEMORY_TOOLS)
+    if google:
+        tools.extend(GOOGLE_TOOLS)
     return tools
 
 
-def _ctx(settings: Settings, client, record, save_image, memory=None) -> ToolContext:
+def _ctx(settings: Settings, client, record, save_image, memory=None, google=None) -> ToolContext:
     return ToolContext(
         client=client,
         search_providers=settings.search_providers,
@@ -73,6 +76,7 @@ def _ctx(settings: Settings, client, record, save_image, memory=None) -> ToolCon
         save_image=save_image,
         record=record,
         memory=memory,
+        google=google,
     )
 
 
@@ -89,8 +93,9 @@ async def run_agent(
     browser: bool = False,
     laptop: bool = False,
     memory=None,
+    google=None,
 ) -> AgentResult:
-    tools = tools_for(settings, brain, save_image is not None, memory is not None)
+    tools = tools_for(settings, brain, save_image is not None, memory is not None, google is not None)
     max_steps = settings.max_tool_steps
     if brain == "cloud" and settings.tools_enabled and (browser or laptop):
         if browser:
@@ -100,7 +105,7 @@ async def run_agent(
         max_steps = settings.max_browser_steps
     return await _loop(
         settings, brain, list(messages), [], 0, max_steps, tools, client,
-        private, provider, model, record, save_image, memory,
+        private, provider, model, record, save_image, memory, google,
     )
 
 
@@ -117,6 +122,7 @@ async def resume_agent(
     record: Recorder = _noop,
     save_image: ImageSaver | None = None,
     memory=None,
+    google=None,
 ) -> AgentResult:
     """Continue after the extension carried out the paused browser actions.
     results maps each pending call id to what happened."""
@@ -126,15 +132,15 @@ async def resume_agent(
         convo.append({"role": "tool", "tool_call_id": call.id, "content": content})
     return await _loop(
         settings, brain, convo, list(steps), pending.next_step, pending.max_steps,
-        pending.tools, client, private, provider, model, record, save_image, memory,
+        pending.tools, client, private, provider, model, record, save_image, memory, google,
     )
 
 
 async def _loop(
     settings, brain, convo, steps, start_step, max_steps, tools, client,
-    private, provider, model, record, save_image, memory=None,
+    private, provider, model, record, save_image, memory=None, google=None,
 ) -> AgentResult:
-    ctx = _ctx(settings, client, record, save_image, memory)
+    ctx = _ctx(settings, client, record, save_image, memory, google)
     for step in range(start_step, max_steps + 1):
         last_round = step == max_steps
         if last_round and tools:

@@ -627,3 +627,7 @@ a.file-chip:hover { border-color: #C9D5EC; }
 .memory-item button:hover { color: var(--ink); }
 .memory-item button.danger:hover { color: var(--danger); }
 .memory-empty { color: var(--ink-soft); font-size: 14px; margin-top: 16px; }
+
+/* --- Gmail and Calendar ------------------------------------------------------------------ */
+.google-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+.event-card .memory-text a { color: var(--accent-strong); font-weight: 600; margin-left: 6px; }

@@ -1,0 +1,9 @@
+:root { color-scheme: light; }
+body { margin: 0; background: #FFFFFF; color: #0B1A33; font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 680px; margin: 0 auto; padding: 32px 20px 64px; }
+a { color: #1546D6; }
+main > p:first-child a { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; color: #0B1A33; text-decoration: none; }
+h1 { font-size: 30px; margin: 24px 0 4px; }
+h2 { font-size: 19px; margin: 28px 0 6px; }
+.muted { color: #5B6B86; margin-top: 0; }
+li { margin: 4px 0; }

@@ -26,7 +26,7 @@ from typing import Literal
 
 import httpx
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, Request, UploadFile
-from fastapi.responses import Response
+from fastapi.responses import RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy import Integer, delete, func, or_, select
@@ -41,8 +41,10 @@ from .brains import BrainError, BrainReply, CallRecord
 from .config import Settings, load_settings
 from .db import (
     Conversation,
+    GoogleLink,
     Image,
     Memory,
+    PendingEvent,
     Upload,
     Message,
     UsageEvent,
@@ -57,6 +59,7 @@ from .voice import VoiceError, speak, speakable, transcribe
 from .tools import image_settings_from
 from .persona import OCEAN_SYSTEM_PROMPT
 from .memory import MEMORY_RULES, NEVER_STORE, MemoryStore, memory_out
+from .googleapps import GoogleAccount, GoogleError, auth_url, exchange_code, google_rules, seal, REVOKE_URL
 from .devices import find_device, make_router as devices_router
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -390,6 +393,19 @@ def create_app(
 
         return save
 
+    async def google_for(request: Request, private: bool, conversation_id: int | None) -> GoogleAccount | None:
+        """Gmail and Calendar tools, only in private chats and once Google is connected."""
+        s: Settings = request.app.state.settings
+        if not (private and s.google_client_id and s.google_client_secret and s.tools_enabled):
+            return None
+        async with request.app.state.sessions() as db:
+            if await db.scalar(select(GoogleLink.id).limit(1)) is None:
+                return None
+        return GoogleAccount(
+            request.app.state.sessions, request.app.state.http, s.google_client_id, s.google_client_secret,
+            s.access_token, s.timezone, conversation_id, request.app.state.__dict__.setdefault("google_cache", {}),
+        )
+
     async def run_brain(
         request: Request,
         messages: list[dict],
@@ -401,11 +417,14 @@ def create_app(
         laptop: bool = False,
         memory: MemoryStore | None = None,
         memory_context: str = "",
+        google: GoogleAccount | None = None,
     ) -> AgentResult:
         s: Settings = request.app.state.settings
         system = OCEAN_SYSTEM_PROMPT
         if memory is not None:
             system += "\n\n" + MEMORY_RULES
+        if google is not None:
+            system += "\n\n" + google_rules(s.timezone)
         if memory_context:
             system += "\n\n" + memory_context
         try:
@@ -422,6 +441,7 @@ def create_app(
                 browser=browser,
                 laptop=laptop,
                 memory=memory,
+                google=google,
             )
         except BrainError as err:
             raise HTTPException(err.status_code, str(err))
@@ -579,7 +599,10 @@ def create_app(
         laptop: bool = False,
         conversation_id: int | None = None,
         memory: MemoryStore | None = None,
+        google: GoogleAccount | None = None,
     ) -> AgentResult:
+        if google is None:
+            google = await google_for(request, private, conversation_id)
         if memory is None:
             memory = MemoryStore(request.app.state.sessions, conversation_id, str(user.get("content", "")), private)
         recent = " ".join(str(m.get("content", ""))[:2000] for m in history[-6:]) + " " + str(user.get("content", ""))
@@ -595,7 +618,7 @@ def create_app(
         convo = history + [{"role": "system", "content": h} for h in hints] + [user]
         return await run_brain(
             request, convo, options.brain, private, options.provider, options.model, browser, laptop,
-            memory, memory_context,
+            memory, memory_context, google,
         )
 
     def bot_message(conversation_id: int, result: AgentResult) -> Message:
@@ -716,9 +739,10 @@ def create_app(
         if body.laptop:
             rules = "\n\n".join(r for r in (rules, LAPTOP_RULES) if r)
         memory = MemoryStore(request.app.state.sessions, conversation_id, body.content, private)
+        google = await google_for(request, private, conversation_id)
         result = await ask(
             request, history, {"role": "user", "content": user_for_model}, private, body, rules,
-            browser, body.laptop, conversation_id, memory,
+            browser, body.laptop, conversation_id, memory, google,
         )
         if result.pending is not None:
             run = {
@@ -733,6 +757,7 @@ def create_app(
                 "model": body.model,
                 "actions_done": 0,
                 "memory": memory,
+                "google": google,
             }
             return pause(request, run, result)
         return await save_turn(
@@ -756,7 +781,7 @@ def create_app(
             result = await resume_agent(
                 s, run["brain"], pending, results, run["steps"], request.app.state.http,
                 run["private"], run["provider"], run["model"], recorder(request), image_saver(request),
-                run.get("memory"),
+                run.get("memory"), run.get("google"),
             )
         except BrainError as err:
             raise HTTPException(err.status_code, str(err))
@@ -860,6 +885,125 @@ def create_app(
                 "removed": remove_ids,
                 "messages": [message_out(user_msg), message_out(bot_msg)],
             }
+
+    # --- Gmail and Google Calendar ----------------------------------------------
+
+    def google_states(request: Request) -> dict:
+        store = request.app.state.__dict__.setdefault("google_states", {})
+        now = utcnow()
+        for k in [k for k, exp in store.items() if exp <= now]:
+            del store[k]
+        return store
+
+    @app.get("/api/google/status", dependencies=[Depends(require_token)])
+    async def google_status(request: Request) -> dict:
+        s: Settings = request.app.state.settings
+        async with request.app.state.sessions() as db:
+            link = await db.scalar(select(GoogleLink).order_by(GoogleLink.id.desc()))
+        return {
+            "configured": bool(s.google_client_id and s.google_client_secret),
+            "connected": link is not None,
+            "email": link.email if link else None,
+        }
+
+    @app.post("/api/google/connect", dependencies=[Depends(require_owner)])
+    async def google_connect(request: Request) -> dict:
+        s: Settings = request.app.state.settings
+        if not (s.google_client_id and s.google_client_secret):
+            raise HTTPException(503, "Google is not set up on the server yet.")
+        state = secrets.token_urlsafe(24)
+        google_states(request)[state] = utcnow() + timedelta(minutes=10)
+        return {"url": auth_url(s.google_client_id, s.public_url, state)}
+
+    @app.get("/api/google/callback")
+    async def google_callback(request: Request, state: str = "", code: str = "", error: str = "") -> Response:
+        # No cookie check here: the session cookie is SameSite=Strict, so it does not
+        # come back from Google. The one-time state, made by a signed-in request, proves it.
+        if not state or google_states(request).pop(state, None) is None:
+            return RedirectResponse("/?google=expired", status_code=303)
+        if error or not code:
+            return RedirectResponse("/?google=cancelled", status_code=303)
+        s: Settings = request.app.state.settings
+        try:
+            data = await exchange_code(request.app.state.http, s.google_client_id, s.google_client_secret, s.public_url, code)
+        except GoogleError:
+            return RedirectResponse("/?google=failed", status_code=303)
+        async with request.app.state.sessions() as db:
+            await db.execute(delete(GoogleLink))
+            db.add(GoogleLink(email=data.get("email", "")[:320], refresh_token=seal(data["refresh_token"], s.access_token),
+                              scopes=str(data.get("scope", ""))[:2000]))
+            await db.commit()
+        request.app.state.__dict__.get("google_cache", {}).clear()
+        return RedirectResponse("/?google=connected", status_code=303)
+
+    @app.post("/api/google/disconnect", dependencies=[Depends(require_owner)])
+    async def google_disconnect(request: Request) -> dict:
+        s: Settings = request.app.state.settings
+        async with request.app.state.sessions() as db:
+            link = await db.scalar(select(GoogleLink).order_by(GoogleLink.id.desc()))
+            if link is not None:
+                try:
+                    from .googleapps import unseal
+
+                    await request.app.state.http.post(REVOKE_URL, data={"token": unseal(link.refresh_token, s.access_token)}, timeout=15)
+                except Exception:
+                    pass  # removing it here is what matters
+            await db.execute(delete(GoogleLink))
+            await db.commit()
+        request.app.state.__dict__.get("google_cache", {}).clear()
+        return {"connected": False}
+
+    async def mark_event_steps(db, ev: PendingEvent, status: str, link: str | None = None) -> None:
+        if not ev.conversation_id:
+            return
+        rows = await db.scalars(select(Message).where(Message.conversation_id == ev.conversation_id, Message.role == "assistant"))
+        for row in rows:
+            steps = _steps(row.steps)
+            changed = False
+            for step in steps:
+                if isinstance(step, dict) and step.get("type") == "event" and step.get("id") == ev.id:
+                    step["status"] = status
+                    if link:
+                        step["link"] = link
+                    changed = True
+            if changed:
+                row.steps = json.dumps(steps)
+
+    @app.post("/api/google/events/{event_id}/add", dependencies=[Depends(require_token)])
+    async def add_event(event_id: int, request: Request) -> dict:
+        s: Settings = request.app.state.settings
+        async with request.app.state.sessions() as db:
+            ev = await db.get(PendingEvent, event_id)
+            if ev is None:
+                raise HTTPException(404, "That event suggestion was not found.")
+            if ev.status == "added":
+                return {"status": "added", "link": ev.link}
+            data = json.loads(ev.data)
+        g = await google_for(request, True, None)
+        if g is None:
+            raise HTTPException(409, "Google is not connected. Connect it in Settings.")
+        try:
+            link = await g.add_event(data)
+        except GoogleError as err:
+            raise HTTPException(err.status_code if err.status_code < 500 else 502, str(err))
+        async with request.app.state.sessions() as db:
+            ev = await db.get(PendingEvent, event_id)
+            ev.status, ev.link = "added", link
+            await mark_event_steps(db, ev, "added", link)
+            await db.commit()
+        return {"status": "added", "link": link}
+
+    @app.post("/api/google/events/{event_id}/skip", dependencies=[Depends(require_token)])
+    async def skip_event(event_id: int, request: Request) -> dict:
+        async with request.app.state.sessions() as db:
+            ev = await db.get(PendingEvent, event_id)
+            if ev is None:
+                raise HTTPException(404, "That event suggestion was not found.")
+            if ev.status == "proposed":
+                ev.status = "skipped"
+                await mark_event_steps(db, ev, "skipped")
+                await db.commit()
+            return {"status": ev.status}
 
     # --- Memory ---------------------------------------------------------------
 

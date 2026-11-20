@@ -98,6 +98,8 @@ const ICONS = {
   globe: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.6 3.7 5.4 3.7 8.5s-1.2 5.9-3.7 8.5c-2.5-2.6-3.7-5.4-3.7-8.5S9.5 6.1 12 3.5z"/>',
   stop: '<rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor"/>',
   mic: '<rect x="9" y="3.5" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v2.5"/>',
+  mail: '<rect x="3.5" y="5.5" width="17" height="13" rx="2.5"/><path d="M4 7l8 6 8-6"/>',
+  calendar: '<rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
   brain: '<path d="M9 4.5a3 3 0 0 0-3 3 3 3 0 0 0-2 5.2A3.5 3.5 0 0 0 8.5 19H12V4.5z"/><path d="M15 4.5a3 3 0 0 1 3 3 3 3 0 0 1 2 5.2 3.5 3.5 0 0 1-4.5 6.3H12"/>',
 };
 
@@ -306,6 +308,84 @@ function renderTaskCard(r) {
   return card;
 }
 
+// What Ocean did in Gmail and Calendar, folded away like research steps.
+function renderGoogleSteps(steps) {
+  const g = steps.filter((s) => s.type === "gmail" || s.type === "calendar");
+  if (!g.length) return null;
+  const details = el("details", "research");
+  const summary = document.createElement("summary");
+  summary.appendChild(icon("mail"));
+  const drafts = g.filter((s) => s.action === "draft").length;
+  summary.appendChild(el("span", "", drafts ? `Gmail: ${drafts} ${drafts === 1 ? "draft" : "drafts"} saved` : `Checked Gmail and Calendar (${g.length})`));
+  details.appendChild(summary);
+  const list = document.createElement("ul");
+  for (const s of g) {
+    let text = "";
+    if (s.type === "gmail" && s.action === "search") text = `Searched email for "${s.query}" (${s.count} found)`;
+    else if (s.type === "gmail" && s.action === "read") text = `Read "${s.subject}" from ${s.from}`;
+    else if (s.type === "gmail" && s.action === "draft") text = `Saved a draft to ${s.to}: "${s.subject}". Not sent; it is in your Gmail Drafts.`;
+    else if (s.type === "calendar") text = `Checked your calendar (${s.count} ${s.count === 1 ? "event" : "events"})`;
+    list.appendChild(el("li", "", text));
+  }
+  details.appendChild(list);
+  return details;
+}
+
+function fmtEventTime(ev) {
+  if (ev.all_day) return new Date(ev.start + "T00:00:00").toLocaleDateString("en-ZA", { weekday: "short", day: "numeric", month: "short" }) + ", all day";
+  const a = new Date(ev.start), b = new Date(ev.end);
+  const day = a.toLocaleDateString("en-ZA", { weekday: "short", day: "numeric", month: "short" });
+  const t = (d) => d.toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit", hour12: false });
+  return `${day}, ${t(a)} to ${t(b)}`;
+}
+
+// A calendar event Ocean suggested: Add puts it in Google Calendar.
+function renderEventCard(step) {
+  const card = el("div", "memory-card event-card");
+  card.appendChild(icon("calendar"));
+  const text = el("span", "memory-text");
+  const show = (status) => {
+    card.className = `memory-card event-card ${status === "added" ? "saved" : status}`;
+    text.replaceChildren();
+    const lead = { proposed: "Add to your calendar? ", added: "Added to your calendar: ", skipped: "Not added: " }[status] || "";
+    text.appendChild(el("span", "memory-note", lead));
+    text.appendChild(el("strong", "", step.title));
+    text.appendChild(document.createTextNode(`, ${fmtEventTime(step)}${step.location ? `, ${step.location}` : ""}`));
+    if (status === "added" && step.link && /^https:\/\/(www\.)?(calendar\.)?google\.com\//.test(step.link)) {
+      const a = el("a", "", "Open");
+      a.href = step.link; a.target = "_blank"; a.rel = "noopener noreferrer";
+      text.appendChild(a);
+    }
+  };
+  card.appendChild(text);
+  show(step.status);
+  if (step.status === "proposed") {
+    const actions = el("div", "memory-actions");
+    const add = el("button", "save", "Add");
+    add.type = "button";
+    const skip = el("button", "", "Skip");
+    skip.type = "button";
+    const decide = async (keep) => {
+      add.disabled = skip.disabled = true;
+      try {
+        const r = await api(`/api/google/events/${step.id}/${keep ? "add" : "skip"}`, { method: "POST" });
+        step.status = r.status;
+        if (r.link) step.link = r.link;
+        actions.remove();
+        show(step.status);
+      } catch (err) {
+        add.disabled = skip.disabled = false;
+        setStatus(err.message);
+      }
+    };
+    add.addEventListener("click", () => decide(true));
+    skip.addEventListener("click", () => decide(false));
+    actions.append(add, skip);
+    card.appendChild(actions);
+  }
+  return card;
+}
+
 function renderResearch(steps) {
   const searches = steps.filter((s) => s.type === "search");
   const reads = steps.filter((s) => s.type === "read");
@@ -485,6 +565,8 @@ function renderBotMessage(message, isLast) {
   if (research) content.appendChild(research);
   const actions = renderActions(steps);
   if (actions) content.appendChild(actions);
+  const googleSteps = renderGoogleSteps(steps);
+  if (googleSteps) content.appendChild(googleSteps);
   for (const step of steps) {
     if (step.type === "action" && step.report && step.report.kind === "claude_code") content.appendChild(renderTaskCard(step.report));
   }
@@ -494,6 +576,7 @@ function renderBotMessage(message, isLast) {
   content.appendChild(renderMarkdown(message.content || ""));
   for (const step of steps) {
     if (step.type === "memory" && step.id) content.appendChild(renderMemoryCard(step));
+    if (step.type === "event" && step.id) content.appendChild(renderEventCard(step));
     if (step.type === "forgot" && step.items && step.items.length) {
       const card = el("div", "memory-card deleted");
       card.appendChild(icon("brain"));
@@ -1708,7 +1791,47 @@ async function openSettings() {
   $("settings-panel").hidden = false;
   closeSidebar();
   $("close-settings").focus();
+  renderGoogle();
   await renderDevices();
+}
+
+async function renderGoogle() {
+  const stateText = $("google-state");
+  let st;
+  try { st = await api("/api/google/status"); } catch (err) { stateText.textContent = err.message; return; }
+  $("google-connect").hidden = !st.configured || st.connected;
+  $("google-disconnect").hidden = !st.connected;
+  if (!st.configured) stateText.textContent = "Not set up on the server yet.";
+  else if (st.connected) stateText.textContent = `Connected as ${st.email || "your Google account"}. In private chats Ocean can read and search your email, save drafts (you press Send), read your calendar and suggest events.`;
+  else stateText.textContent = "Let Ocean read your email, save drafts and work with your calendar. It never sends email.";
+}
+
+async function connectGoogle() {
+  try {
+    const { url } = await api("/api/google/connect", { method: "POST" });
+    if (desktop) $("google-state").textContent = "Finish signing in to Google in your browser, then come back here.";
+    window.location.href = url;
+  } catch (err) { $("google-state").textContent = err.message; }
+}
+
+async function disconnectGoogle() {
+  if (!window.confirm("Disconnect Google? Ocean will stop reading your email and calendar.")) return;
+  try { await api("/api/google/disconnect", { method: "POST" }); renderGoogle(); }
+  catch (err) { $("google-state").textContent = err.message; }
+}
+
+function googleReturnMessage() {
+  const q = new URLSearchParams(window.location.search);
+  const g = q.get("google");
+  if (!g) return;
+  history.replaceState(null, "", window.location.pathname);
+  const text = {
+    connected: "Google is connected. Ask Ocean about your email or calendar in a private chat.",
+    cancelled: "Google was not connected: the sign-in was cancelled.",
+    expired: "That Google sign-in link expired. Try Connect Google again.",
+    failed: "Google did not accept the sign-in. Try Connect Google again.",
+  }[g];
+  if (text) setStatus(text);
 }
 
 function closeSettings() {
@@ -1922,6 +2045,7 @@ async function start(username) {
   }
   buildRouteOptions();
   try { await refreshConversations(); } catch (err) { setStatus(err.message); }
+  googleReturnMessage();
   refreshUsage();
   if (!coarsePointer()) $("input").focus();
 }
@@ -2120,6 +2244,8 @@ function wire() {
   $("usage-link").addEventListener("click", openUsage);
   $("settings-link").addEventListener("click", openSettings);
   $("memory-link").addEventListener("click", openMemory);
+  $("google-connect").addEventListener("click", connectGoogle);
+  $("google-disconnect").addEventListener("click", disconnectGoogle);
   $("close-memory").addEventListener("click", closeMemory);
   $("memory-form").addEventListener("submit", addMemory);
   $("memory-kind").addEventListener("change", (e) => {

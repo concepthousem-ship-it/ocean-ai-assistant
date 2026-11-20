@@ -89,6 +89,11 @@ class Settings:
     image_model: str = "@cf/black-forest-labs/flux-1-schnell"
     # Speech to text on Groq (uses the Groq provider's key).
     transcribe_model: str = "whisper-large-v3-turbo"
+    # Gmail and Google Calendar (an OAuth client from Google Cloud).
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    public_url: str = "https://ocean.digivireo.com"
+    timezone: str = "Africa/Johannesburg"
 
 
 @dataclass(frozen=True)
@@ -181,4 +186,8 @@ def load_settings() -> Settings:
         max_browser_steps=max(1, min(40, int(_env("OCEAN_MAX_BROWSER_STEPS", "20")))),
         image_model=_env("OCEAN_IMAGE_MODEL", "@cf/black-forest-labs/flux-1-schnell"),
         transcribe_model=_env("OCEAN_TRANSCRIBE_MODEL", "whisper-large-v3-turbo"),
+        google_client_id=_env("OCEAN_GOOGLE_CLIENT_ID"),
+        google_client_secret=_env("OCEAN_GOOGLE_CLIENT_SECRET"),
+        public_url=_env("OCEAN_PUBLIC_URL", "https://ocean.digivireo.com").rstrip("/"),
+        timezone=_env("OCEAN_TIMEZONE", "Africa/Johannesburg"),
     )

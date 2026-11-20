@@ -411,6 +411,7 @@ class ToolContext:
     save_image: ImageSaver | None = None
     record: Recorder = _noop
     memory: object | None = None  # a memory.MemoryStore
+    google: object | None = None  # a googleapps.GoogleAccount
 
 
 # --- Running a tool call from the model ----------------------------------------------
@@ -428,6 +429,14 @@ async def run_tool(name: str, raw_arguments: str, ctx: ToolContext) -> ToolResul
             raise ValueError
     except ValueError:
         return ToolResult("Error: the tool arguments were not valid JSON.", {"type": "error", "tool": name})
+
+    if name in ("gmail_search", "gmail_read", "gmail_draft", "calendar_events", "calendar_add_event"):
+        if ctx.google is None:
+            return ToolResult("Error: Google is not connected here.", {"type": "error", "tool": name})
+        from .googleapps import run_google_tool
+
+        content, step = await run_google_tool(name, args, ctx.google)
+        return ToolResult(content, step)
 
     if name in ("remember", "recall_memory", "forget_memory"):
         if ctx.memory is None:

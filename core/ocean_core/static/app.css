@@ -630,4 +630,9 @@ a.file-chip:hover { border-color: #C9D5EC; }
 
 /* --- Gmail and Calendar ------------------------------------------------------------------ */
 .google-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+.notion-form { display: flex; flex-direction: column; gap: 8px; }
+.notion-steps { margin: 0; padding-left: 18px; }
+.notion-steps li { margin: 2px 0; }
+.notion-form input { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.notion-form .small-btn { align-self: flex-start; }
 .event-card .memory-text a { color: var(--accent-strong); font-weight: 600; margin-left: 6px; }

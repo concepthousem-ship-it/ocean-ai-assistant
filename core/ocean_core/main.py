@@ -43,6 +43,7 @@ from .db import (
     Conversation,
     GoogleLink,
     Image,
+    NotionLink,
     Memory,
     PendingEvent,
     Upload,
@@ -59,7 +60,8 @@ from .voice import VoiceError, speak, speakable, transcribe
 from .tools import image_settings_from
 from .persona import OCEAN_SYSTEM_PROMPT
 from .memory import MEMORY_RULES, NEVER_STORE, MemoryStore, memory_out
-from .googleapps import GoogleAccount, GoogleError, auth_url, exchange_code, google_rules, seal, REVOKE_URL
+from .notion import NOTION_RULES, NotionAccount, NotionError, TOKEN_RE as NOTION_TOKEN_RE, check_token, notion_link
+from .googleapps import DRIVE_RULES, GoogleAccount, GoogleError, auth_url, exchange_code, google_rules, has_drive, seal, REVOKE_URL
 from .devices import find_device, make_router as devices_router
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -399,12 +401,29 @@ def create_app(
         if not (private and s.google_client_id and s.google_client_secret and s.tools_enabled):
             return None
         async with request.app.state.sessions() as db:
-            if await db.scalar(select(GoogleLink.id).limit(1)) is None:
+            link = await db.scalar(select(GoogleLink).order_by(GoogleLink.id.desc()))
+            if link is None:
                 return None
         return GoogleAccount(
             request.app.state.sessions, request.app.state.http, s.google_client_id, s.google_client_secret,
             s.access_token, s.timezone, conversation_id, request.app.state.__dict__.setdefault("google_cache", {}),
+            has_drive(link.scopes),
         )
+
+    async def notion_for(request: Request, private: bool) -> NotionAccount | None:
+        """Notion tools, only in private chats and once Notion is connected."""
+        s: Settings = request.app.state.settings
+        if not (private and s.tools_enabled):
+            return None
+        link = await notion_link(request.app.state.sessions)
+        if link is None:
+            return None
+        try:
+            from .googleapps import unseal
+
+            return NotionAccount(request.app.state.http, unseal(link.token, s.access_token))
+        except Exception:
+            return None
 
     async def run_brain(
         request: Request,
@@ -418,6 +437,7 @@ def create_app(
         memory: MemoryStore | None = None,
         memory_context: str = "",
         google: GoogleAccount | None = None,
+        notion: NotionAccount | None = None,
     ) -> AgentResult:
         s: Settings = request.app.state.settings
         system = OCEAN_SYSTEM_PROMPT
@@ -425,6 +445,10 @@ def create_app(
             system += "\n\n" + MEMORY_RULES
         if google is not None:
             system += "\n\n" + google_rules(s.timezone)
+            if google.drive:
+                system += "\n\n" + DRIVE_RULES
+        if notion is not None:
+            system += "\n\n" + NOTION_RULES
         if memory_context:
             system += "\n\n" + memory_context
         try:
@@ -442,6 +466,7 @@ def create_app(
                 laptop=laptop,
                 memory=memory,
                 google=google,
+                notion=notion,
             )
         except BrainError as err:
             raise HTTPException(err.status_code, str(err))
@@ -618,7 +643,7 @@ def create_app(
         convo = history + [{"role": "system", "content": h} for h in hints] + [user]
         return await run_brain(
             request, convo, options.brain, private, options.provider, options.model, browser, laptop,
-            memory, memory_context, google,
+            memory, memory_context, google, await notion_for(request, private),
         )
 
     def bot_message(conversation_id: int, result: AgentResult) -> Message:
@@ -781,7 +806,7 @@ def create_app(
             result = await resume_agent(
                 s, run["brain"], pending, results, run["steps"], request.app.state.http,
                 run["private"], run["provider"], run["model"], recorder(request), image_saver(request),
-                run.get("memory"), run.get("google"),
+                run.get("memory"), run.get("google"), await notion_for(request, run["private"]),
             )
         except BrainError as err:
             raise HTTPException(err.status_code, str(err))
@@ -904,6 +929,7 @@ def create_app(
             "configured": bool(s.google_client_id and s.google_client_secret),
             "connected": link is not None,
             "email": link.email if link else None,
+            "drive": bool(link and has_drive(link.scopes)),
         }
 
     @app.post("/api/google/connect", dependencies=[Depends(require_owner)])
@@ -951,6 +977,39 @@ def create_app(
             await db.execute(delete(GoogleLink))
             await db.commit()
         request.app.state.__dict__.get("google_cache", {}).clear()
+        return {"connected": False}
+
+    # --- Notion --------------------------------------------------------------
+
+    class NotionConnect(BaseModel):
+        token: str = Field(min_length=10, max_length=200)
+
+    @app.get("/api/notion/status", dependencies=[Depends(require_token)])
+    async def notion_status(request: Request) -> dict:
+        link = await notion_link(request.app.state.sessions)
+        return {"connected": link is not None, "workspace": link.workspace if link else None}
+
+    @app.post("/api/notion/connect", dependencies=[Depends(require_owner)])
+    async def notion_connect(body: NotionConnect, request: Request) -> dict:
+        s: Settings = request.app.state.settings
+        token = body.token.strip()
+        if not NOTION_TOKEN_RE.match(token):
+            raise HTTPException(400, "That does not look like a Notion integration token. It starts with ntn_.")
+        try:
+            workspace = await check_token(request.app.state.http, token)
+        except NotionError as err:
+            raise HTTPException(400, "Notion did not accept that token. Copy it again from your integration page." if err.status_code == 409 else str(err))
+        async with request.app.state.sessions() as db:
+            await db.execute(delete(NotionLink))
+            db.add(NotionLink(workspace=workspace[:200], token=seal(token, s.access_token)))
+            await db.commit()
+        return {"connected": True, "workspace": workspace}
+
+    @app.post("/api/notion/disconnect", dependencies=[Depends(require_owner)])
+    async def notion_disconnect(request: Request) -> dict:
+        async with request.app.state.sessions() as db:
+            await db.execute(delete(NotionLink))
+            await db.commit()
         return {"connected": False}
 
     async def mark_event_steps(db, ev: PendingEvent, status: str, link: str | None = None) -> None:

@@ -203,6 +203,17 @@ class GoogleLink(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class NotionLink(Base):
+    """Gudani's Notion integration token, encrypted."""
+
+    __tablename__ = "notion_links"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    workspace: Mapped[str] = mapped_column(String(200), default="")
+    token: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class PendingEvent(Base):
     """A calendar event Ocean suggested. It is only added when Gudani taps Add."""
 

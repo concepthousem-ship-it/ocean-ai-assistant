@@ -6,20 +6,20 @@
   <meta name="color-scheme" content="light">
   <meta name="theme-color" content="#FFFFFF">
   <title>Ocean</title>
-  <link rel="icon" href="icon.svg?v=12" type="image/svg+xml">
+  <link rel="icon" href="icon.svg?v=13" type="image/svg+xml">
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/pwa/apple-touch-icon.png">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="application-name" content="Ocean">
-  <link rel="stylesheet" href="app.css?v=12">
-  <script src="vendor/marked.js?v=12" defer></script>
-  <script src="vendor/purify.js?v=12" defer></script>
-  <script src="app.js?v=12" defer></script>
+  <link rel="stylesheet" href="app.css?v=13">
+  <script src="vendor/marked.js?v=13" defer></script>
+  <script src="vendor/purify.js?v=13" defer></script>
+  <script src="app.js?v=13" defer></script>
 </head>
 <body>
   <!-- ===== Sign in and setup ===== -->
   <main id="auth" class="auth" hidden>
-    <div class="auth-brand"><img src="icon.svg?v=12" alt="" width="44" height="44"><span>Ocean</span></div>
+    <div class="auth-brand"><img src="icon.svg?v=13" alt="" width="44" height="44"><span>Ocean</span></div>
 
     <form id="signin-form" class="auth-card" hidden>
       <h1>Welcome back</h1>
@@ -83,7 +83,7 @@
     <aside id="sidebar" class="sidebar" aria-label="Chats">
       <div class="side-top">
         <a href="#" id="home-link" class="brand" aria-label="Ocean, start a new chat">
-          <img src="icon.svg?v=12" alt="" width="28" height="28"><span>Ocean</span>
+          <img src="icon.svg?v=13" alt="" width="28" height="28"><span>Ocean</span>
         </a>
         <button id="collapse-sidebar" class="icon-btn" aria-label="Hide chat list" title="Hide chat list">
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3"/><path d="M9.5 4.5v15"/></svg>
@@ -157,7 +157,7 @@
       <div id="scroller" class="scroller">
         <!-- Start screen -->
         <div id="welcome" class="welcome">
-          <img src="icon.svg?v=12" alt="" width="76" height="76" class="welcome-logo">
+          <img src="icon.svg?v=13" alt="" width="76" height="76" class="welcome-logo">
           <h1 id="greeting" class="greeting">Good day</h1>
           <p class="welcome-sub">What are we working on?</p>
         </div>
@@ -251,12 +251,25 @@
         <p class="muted small">Add Ocean to this device as an app, with its own icon and window.</p>
         <button id="install-app" class="btn btn-primary small-btn">Install Ocean</button>
       </div>
-      <h3 class="usage-sub">Gmail and Google Calendar</h3>
+      <h3 class="usage-sub">Google: Gmail, Calendar and Drive</h3>
       <p id="google-state" class="muted small">Checking...</p>
       <div class="google-buttons">
         <button id="google-connect" class="btn btn-primary small-btn" hidden>Connect Google</button>
         <button id="google-disconnect" class="btn btn-ghost small-btn" hidden>Disconnect</button>
       </div>
+      <h3 class="usage-sub">Notion</h3>
+      <p id="notion-state" class="muted small">Checking...</p>
+      <form id="notion-form" class="notion-form" hidden>
+        <ol class="muted small notion-steps">
+          <li>Open <a href="https://www.notion.so/profile/integrations" target="_blank" rel="noopener noreferrer">Notion integrations</a> and make a new internal integration called Ocean.</li>
+          <li>Copy its secret (it starts with ntn_) and paste it below.</li>
+          <li>In Notion, open each page Ocean may use, then choose the ... menu, Connections, Ocean.</li>
+        </ol>
+        <label class="sr-only" for="notion-token">Notion integration secret</label>
+        <input id="notion-token" type="password" autocomplete="off" spellcheck="false" placeholder="ntn_..." maxlength="200">
+        <button type="submit" class="btn btn-primary small-btn">Connect Notion</button>
+      </form>
+      <button id="notion-disconnect" class="btn btn-ghost small-btn" hidden>Disconnect Notion</button>
       <h3 class="usage-sub">Chrome extension</h3>
       <p class="muted small">Connect the Ocean extension to use Ocean beside any web page. Make a code, then type it into the extension. The code works once and lasts 10 minutes.</p>
       <button id="make-code" class="btn btn-primary small-btn">Connect Chrome extension</button>
@@ -300,7 +313,7 @@
     </div>
     <button type="button" id="voice-orb" class="voice-orb" data-state="idle" aria-describedby="voice-hint">
       <span class="voice-ring" aria-hidden="true"></span>
-      <img src="icon.svg?v=12" alt="" width="132" height="132">
+      <img src="icon.svg?v=13" alt="" width="132" height="132">
     </button>
     <p id="voice-state" class="voice-state" aria-live="polite">Starting...</p>
     <p id="voice-hint" class="voice-hint"></p>

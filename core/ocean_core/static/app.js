@@ -310,13 +310,18 @@ function renderTaskCard(r) {
 
 // What Ocean did in Gmail and Calendar, folded away like research steps.
 function renderGoogleSteps(steps) {
-  const g = steps.filter((s) => s.type === "gmail" || s.type === "calendar");
+  const g = steps.filter((s) => ["gmail", "calendar", "drive", "notion"].includes(s.type));
   if (!g.length) return null;
   const details = el("details", "research");
   const summary = document.createElement("summary");
   summary.appendChild(icon("mail"));
-  const drafts = g.filter((s) => s.action === "draft").length;
-  summary.appendChild(el("span", "", drafts ? `Gmail: ${drafts} ${drafts === 1 ? "draft" : "drafts"} saved` : `Checked Gmail and Calendar (${g.length})`));
+  const drafts = g.filter((s) => s.type === "gmail" && s.action === "draft").length;
+  const made = g.filter((s) => s.action === "create" || s.action === "append").length;
+  const places = [...new Set(g.map((s) => ({ gmail: "Gmail", calendar: "Calendar", drive: "Drive", notion: "Notion" })[s.type]))].join(", ");
+  let label = `Checked ${places} (${g.length})`;
+  if (drafts) label = `Gmail: ${drafts} ${drafts === 1 ? "draft" : "drafts"} saved`;
+  else if (made) label = `${places}: ${made} ${made === 1 ? "page" : "pages"} made or updated`;
+  summary.appendChild(el("span", "", label));
   details.appendChild(summary);
   const list = document.createElement("ul");
   for (const s of g) {
@@ -325,7 +330,18 @@ function renderGoogleSteps(steps) {
     else if (s.type === "gmail" && s.action === "read") text = `Read "${s.subject}" from ${s.from}`;
     else if (s.type === "gmail" && s.action === "draft") text = `Saved a draft to ${s.to}: "${s.subject}". Not sent; it is in your Gmail Drafts.`;
     else if (s.type === "calendar") text = `Checked your calendar (${s.count} ${s.count === 1 ? "event" : "events"})`;
-    list.appendChild(el("li", "", text));
+    else if (s.action === "search") text = `Searched ${s.type === "drive" ? "Drive" : "Notion"} for "${s.query}" (${s.count} found)`;
+    else if (s.action === "read") text = `Read "${s.name || s.title}"`;
+    else if (s.action === "create") text = s.type === "drive" ? `Saved a new Google Doc: "${s.name}"` : `Made a Notion page: "${s.title}"`;
+    else if (s.action === "append") text = `Added to the Notion page "${s.title}"`;
+    const li = el("li", "", text);
+    const href = s.link || s.url;
+    if (href && /^https:\/\/(docs\.google\.com|drive\.google\.com|www\.notion\.so|notion\.so)\//.test(href) && s.action !== "search") {
+      const a = el("a", "", "Open");
+      a.href = href; a.target = "_blank"; a.rel = "noopener noreferrer";
+      li.append(" ", a);
+    }
+    list.appendChild(li);
   }
   details.appendChild(list);
   return details;
@@ -1792,6 +1808,7 @@ async function openSettings() {
   closeSidebar();
   $("close-settings").focus();
   renderGoogle();
+  renderNotion();
   await renderDevices();
 }
 
@@ -1799,11 +1816,42 @@ async function renderGoogle() {
   const stateText = $("google-state");
   let st;
   try { st = await api("/api/google/status"); } catch (err) { stateText.textContent = err.message; return; }
-  $("google-connect").hidden = !st.configured || st.connected;
+  const needsDrive = st.connected && !st.drive;
+  $("google-connect").hidden = !st.configured || (st.connected && !needsDrive);
+  $("google-connect").textContent = needsDrive ? "Reconnect to add Google Drive" : "Connect Google";
   $("google-disconnect").hidden = !st.connected;
   if (!st.configured) stateText.textContent = "Not set up on the server yet.";
-  else if (st.connected) stateText.textContent = `Connected as ${st.email || "your Google account"}. In private chats Ocean can read and search your email, save drafts (you press Send), read your calendar and suggest events.`;
+  else if (st.connected) stateText.textContent = `Connected as ${st.email || "your Google account"}. In private chats Ocean can read and search your email, save drafts (you press Send), read your calendar and suggest events` + (st.drive ? ", and search, read and create files in Google Drive." : ". Reconnect once to add Google Drive.");
   else stateText.textContent = "Let Ocean read your email, save drafts and work with your calendar. It never sends email.";
+}
+
+async function renderNotion() {
+  let st;
+  try { st = await api("/api/notion/status"); } catch (err) { $("notion-state").textContent = err.message; return; }
+  $("notion-form").hidden = st.connected;
+  $("notion-disconnect").hidden = !st.connected;
+  $("notion-state").textContent = st.connected
+    ? `Connected to ${st.workspace || "Notion"}. In private chats Ocean can search and read the pages you shared with the Ocean integration, make new pages and add to pages. It never deletes anything. To give it more pages, use Connections on that page in Notion.`
+    : "Connect Notion whenever you like. Ocean will only see the pages you share with it.";
+}
+
+async function connectNotion(e) {
+  e.preventDefault();
+  const token = $("notion-token").value.trim();
+  if (!token) { $("notion-state").textContent = "Paste the integration secret first."; return; }
+  if (!/^(ntn_|secret_)\S{20,}$/.test(token)) { $("notion-state").textContent = "That does not look like a Notion secret. It starts with ntn_."; return; }
+  $("notion-state").textContent = "Checking with Notion...";
+  try {
+    await api("/api/notion/connect", { method: "POST", body: { token } });
+    $("notion-token").value = "";
+    renderNotion();
+  } catch (err) { $("notion-state").textContent = err.message; }
+}
+
+async function disconnectNotion() {
+  if (!window.confirm("Disconnect Notion? Ocean will stop reading your Notion pages.")) return;
+  try { await api("/api/notion/disconnect", { method: "POST" }); renderNotion(); }
+  catch (err) { $("notion-state").textContent = err.message; }
 }
 
 async function connectGoogle() {
@@ -2246,6 +2294,8 @@ function wire() {
   $("memory-link").addEventListener("click", openMemory);
   $("google-connect").addEventListener("click", connectGoogle);
   $("google-disconnect").addEventListener("click", disconnectGoogle);
+  $("notion-form").addEventListener("submit", connectNotion);
+  $("notion-disconnect").addEventListener("click", disconnectNotion);
   $("close-memory").addEventListener("click", closeMemory);
   $("memory-form").addEventListener("submit", addMemory);
   $("memory-kind").addEventListener("change", (e) => {

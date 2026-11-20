@@ -100,9 +100,9 @@ def say(c, cid, text):
 def test_connect_flow_and_status():
     fake = FakeGoogle()
     with client_for(gsettings(), fake) as c:
-        assert c.get("/api/google/status", headers=AUTH).json() == {"configured": True, "connected": False, "email": None}
+        assert c.get("/api/google/status", headers=AUTH).json() == {"configured": True, "connected": False, "email": None, "drive": False}
         state = connect(c)
-        assert c.get("/api/google/status", headers=AUTH).json() == {"configured": True, "connected": True, "email": "gudani@example.com"}
+        assert c.get("/api/google/status", headers=AUTH).json() == {"configured": True, "connected": True, "email": "gudani@example.com", "drive": False}
         # A state works once only, and an unknown one is refused.
         assert c.get(f"/api/google/callback?state={state}&code=xyz", follow_redirects=False).headers["location"] == "/?google=expired"
         assert c.get("/api/google/callback?state=nope&code=xyz", follow_redirects=False).headers["location"] == "/?google=expired"

@@ -412,6 +412,7 @@ class ToolContext:
     record: Recorder = _noop
     memory: object | None = None  # a memory.MemoryStore
     google: object | None = None  # a googleapps.GoogleAccount
+    notion: object | None = None  # a notion.NotionAccount
 
 
 # --- Running a tool call from the model ----------------------------------------------
@@ -430,12 +431,21 @@ async def run_tool(name: str, raw_arguments: str, ctx: ToolContext) -> ToolResul
     except ValueError:
         return ToolResult("Error: the tool arguments were not valid JSON.", {"type": "error", "tool": name})
 
-    if name in ("gmail_search", "gmail_read", "gmail_draft", "calendar_events", "calendar_add_event"):
+    if name in ("gmail_search", "gmail_read", "gmail_draft", "calendar_events", "calendar_add_event",
+                "drive_search", "drive_read", "drive_create_doc"):
         if ctx.google is None:
             return ToolResult("Error: Google is not connected here.", {"type": "error", "tool": name})
         from .googleapps import run_google_tool
 
         content, step = await run_google_tool(name, args, ctx.google)
+        return ToolResult(content, step)
+
+    if name in ("notion_search", "notion_read", "notion_create_page", "notion_append"):
+        if ctx.notion is None:
+            return ToolResult("Error: Notion is not connected here.", {"type": "error", "tool": name})
+        from .notion import run_notion_tool
+
+        content, step = await run_notion_tool(name, args, ctx.notion)
         return ToolResult(content, step)
 
     if name in ("remember", "recall_memory", "forget_memory"):

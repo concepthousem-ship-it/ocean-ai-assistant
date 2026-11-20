@@ -175,6 +175,22 @@ class PairingCode(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class Memory(Base):
+    """Something Ocean remembers across chats: a client profile fact, a project
+    note, or a fact about Gudani. "proposed" ones wait for him to tap Save."""
+
+    __tablename__ = "memories"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kind: Mapped[str] = mapped_column(String(20), index=True)  # client, project or me
+    subject: Mapped[str] = mapped_column(String(200), index=True)
+    content: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="saved", index=True)
+    conversation_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 def async_url(url: str) -> str:
     """Turn the address Railway gives into one the async drivers accept."""
     if url.startswith("postgres://"):

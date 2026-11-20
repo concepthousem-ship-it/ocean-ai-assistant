@@ -14,6 +14,7 @@ I built it as a solo project, on free AI providers, for my daily work as a Shopi
 | **Code** | Complete code in fenced blocks with the language and a copy button. Tuned for Shopify Liquid, HTML, CSS, JavaScript and email builds. |
 | **Voice mode** | Tap Talk and have a hands-free conversation: Ocean hears when you stop, answers in a short spoken style and reads it aloud (Groq Whisper in, Deepgram Aura on Cloudflare out, the device's own voice as a backup). |
 | **Personality** | Witty, cheeky and opinionated, with South African slang in chat, and strictly professional in anything written for clients. |
+| **Memory** | Remembers client profiles, project notes and how I like work done, across every chat. It saves when I say "remember", otherwise it shows a one-tap Save card. Client notes are only used in private chats. |
 | **Files** | Upload PDF, Word, Excel, CSV and text files, or dictate a message with the mic. |
 | **Pictures** | Generates images with FLUX.1 schnell on Cloudflare Workers AI. |
 | **Laptop** | In the Windows app, Ocean can list, read and save files in folders I allow, open apps and links, and run a small model on the laptop with Ollama. |
@@ -97,7 +98,7 @@ source .venv/bin/activate        (Windows: .venv\Scripts\activate)
 pip install -r requirements.txt -r requirements-dev.txt
 cp ../.env.example ../.env       (then add your own keys)
 uvicorn ocean_core.main:app --reload
-pytest                            (149 tests)
+pytest                            (158 tests)
 ```
 
 **Windows app:** `cd desktop && npm install && npm start`. Build the installer with `npm run dist:win` (needs NSIS). Tests: `node test/laptop.test.js` and `node test/updater.test.js`.
@@ -106,4 +107,4 @@ pytest                            (149 tests)
 
 ## Status
 
-Built in phases: core server, search and agents, voice and files with a new interface, desktop and browser control, installer and phone app, automatic updates, then voice mode and a stronger personality. Next on the list: long-term memory of clients and projects, and email and calendar.
+Built in phases: core server, search and agents, voice and files with a new interface, desktop and browser control, installer and phone app, automatic updates, voice mode and a stronger personality, then long-term memory of clients and projects. Next on the list: email and calendar.

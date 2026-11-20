@@ -588,3 +588,42 @@ a.file-chip:hover { border-color: #C9D5EC; }
 @media (prefers-reduced-motion: reduce) {
   .voice-orb { transform: none; }
 }
+
+/* --- Memory ---------------------------------------------------------------------------- */
+.memory-card {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 10px 0 2px;
+  padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface);
+  font-size: 14px;
+}
+.memory-card svg { width: 18px; height: 18px; flex: 0 0 18px; fill: none; stroke: var(--accent); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.memory-card .memory-text { flex: 1 1 220px; min-width: 0; overflow-wrap: anywhere; }
+.memory-card .memory-text strong { font-weight: 600; }
+.memory-card .memory-note { color: var(--ink-soft); }
+.memory-card.saved { background: var(--accent-wash); border-color: transparent; }
+.memory-card.skipped, .memory-card.deleted { opacity: .65; }
+.memory-actions { display: flex; gap: 6px; }
+.memory-actions button {
+  font: inherit; font-size: 13.5px; font-weight: 600; padding: 6px 12px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+}
+.memory-actions button.save { background: var(--accent); border-color: var(--accent); color: #fff; }
+.memory-actions button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.memory-form { display: flex; flex-direction: column; gap: 8px; margin: 14px 0 6px; }
+.memory-form-row { display: flex; gap: 8px; }
+.memory-form select, .memory-form input, .memory-form textarea {
+  font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: var(--bg); color: var(--ink); min-width: 0;
+}
+.memory-form input { flex: 1; }
+.memory-form textarea { resize: vertical; }
+.memory-form .small-btn { align-self: flex-start; padding: 8px 14px; font-size: 14px; }
+.memory-list h3 { font-size: 14px; margin: 18px 0 6px; display: flex; gap: 8px; align-items: baseline; }
+.memory-list h3 span { font-weight: 500; color: var(--ink-faint); font-size: 12.5px; }
+.memory-item { display: flex; gap: 8px; align-items: flex-start; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.memory-item p { margin: 0; flex: 1; overflow-wrap: anywhere; }
+.memory-item.proposed p { color: var(--ink-soft); }
+.memory-item .tag { font-size: 11.5px; color: var(--accent-strong); background: var(--accent-wash); padding: 1px 7px; border-radius: 999px; white-space: nowrap; }
+.memory-item button { font: inherit; font-size: 12.5px; border: 0; background: none; color: var(--ink-soft); cursor: pointer; padding: 2px 4px; }
+.memory-item button:hover { color: var(--ink); }
+.memory-item button.danger:hover { color: var(--danger); }
+.memory-empty { color: var(--ink-soft); font-size: 14px; margin-top: 16px; }

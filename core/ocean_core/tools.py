@@ -410,6 +410,7 @@ class ToolContext:
     image: ImageSettings | None = None
     save_image: ImageSaver | None = None
     record: Recorder = _noop
+    memory: object | None = None  # a memory.MemoryStore
 
 
 # --- Running a tool call from the model ----------------------------------------------
@@ -427,6 +428,14 @@ async def run_tool(name: str, raw_arguments: str, ctx: ToolContext) -> ToolResul
             raise ValueError
     except ValueError:
         return ToolResult("Error: the tool arguments were not valid JSON.", {"type": "error", "tool": name})
+
+    if name in ("remember", "recall_memory", "forget_memory"):
+        if ctx.memory is None:
+            return ToolResult("Error: memory is not available here.", {"type": "error", "tool": name})
+        from .memory import run_memory_tool
+
+        content, step = await run_memory_tool(name, args, ctx.memory)
+        return ToolResult(content, step)
 
     if name == "web_search":
         query = str(args.get("query", ""))

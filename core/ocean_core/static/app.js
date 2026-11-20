@@ -98,6 +98,7 @@ const ICONS = {
   globe: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.6 3.7 5.4 3.7 8.5s-1.2 5.9-3.7 8.5c-2.5-2.6-3.7-5.4-3.7-8.5S9.5 6.1 12 3.5z"/>',
   stop: '<rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor"/>',
   mic: '<rect x="9" y="3.5" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v2.5"/>',
+  brain: '<path d="M9 4.5a3 3 0 0 0-3 3 3 3 0 0 0-2 5.2A3.5 3.5 0 0 0 8.5 19H12V4.5z"/><path d="M15 4.5a3 3 0 0 1 3 3 3 3 0 0 1 2 5.2 3.5 3.5 0 0 1-4.5 6.3H12"/>',
 };
 
 function icon(name) {
@@ -342,6 +343,49 @@ function renderResearch(steps) {
   return details;
 }
 
+// A memory Ocean saved, or wants to save: Save and Skip are one tap each.
+function renderMemoryCard(step) {
+  const card = el("div", "memory-card");
+  card.appendChild(icon("brain"));
+  const text = el("span", "memory-text");
+  const show = (status) => {
+    card.className = `memory-card ${status}`;
+    text.replaceChildren();
+    const lead = { proposed: "Remember this? ", saved: "Saved to memory: ", skipped: "Not saved: ", deleted: "Deleted from memory: " }[status] || "";
+    text.appendChild(el("span", "memory-note", lead));
+    text.appendChild(el("strong", "", `${step.subject}: `));
+    text.appendChild(document.createTextNode(step.content));
+  };
+  card.appendChild(text);
+  show(step.status);
+  if (step.status === "proposed") {
+    const actions = el("div", "memory-actions");
+    const save = el("button", "save", "Save");
+    save.type = "button";
+    const skip = el("button", "", "Skip");
+    skip.type = "button";
+    const decide = async (keep) => {
+      save.disabled = skip.disabled = true;
+      try {
+        if (keep) await api(`/api/memories/${step.id}`, { method: "PATCH", body: { status: "saved" } });
+        else await api(`/api/memories/${step.id}`, { method: "DELETE" });
+        step.status = keep ? "saved" : "skipped";
+        actions.remove();
+        show(step.status);
+      } catch (err) {
+        save.disabled = skip.disabled = false;
+        setStatus(err.status === 404 ? "That memory was already removed." : err.message);
+        if (err.status === 404) { step.status = "skipped"; actions.remove(); show("skipped"); }
+      }
+    };
+    save.addEventListener("click", () => decide(true));
+    skip.addEventListener("click", () => decide(false));
+    actions.append(save, skip);
+    card.appendChild(actions);
+  }
+  return card;
+}
+
 function fileIconName(kind) {
   if (kind === "image") return "image";
   if (kind === "excel" || kind === "csv") return "sheet";
@@ -448,6 +492,15 @@ function renderBotMessage(message, isLast) {
     if (step.type === "image" && step.id) content.appendChild(renderImage(step));
   }
   content.appendChild(renderMarkdown(message.content || ""));
+  for (const step of steps) {
+    if (step.type === "memory" && step.id) content.appendChild(renderMemoryCard(step));
+    if (step.type === "forgot" && step.items && step.items.length) {
+      const card = el("div", "memory-card deleted");
+      card.appendChild(icon("brain"));
+      card.appendChild(el("span", "memory-text", `Forgot: ${step.items.map((i) => `${i.subject}: ${i.content}`).join("; ")}`));
+      content.appendChild(card);
+    }
+  }
   const tools = el("div", "msg-tools");
   tools.appendChild(toolButton("copy", "Copy", (e) => copyText(message.content, e.currentTarget)));
   if (isLast) tools.appendChild(toolButton("retry", "Try again", () => regenerate()));
@@ -1553,6 +1606,100 @@ function closeUsage() {
   $("gauge").focus();
 }
 
+/* --- Memory panel ---------------------------------------------------------------- */
+
+const KIND_LABEL = { client: "Client", project: "Project", me: "About you" };
+
+async function openMemory() {
+  $("memory-panel").hidden = false;
+  closeSidebar();
+  $("close-memory").focus();
+  await renderMemoryList();
+}
+function closeMemory() {
+  $("memory-panel").hidden = true;
+  $("memory-link").focus();
+}
+
+async function renderMemoryList() {
+  const box = $("memory-list");
+  let items;
+  try {
+    items = (await api("/api/memories")).memories;
+  } catch (err) {
+    $("memory-status").textContent = err.message;
+    return;
+  }
+  box.replaceChildren();
+  if (!items.length) {
+    box.appendChild(el("p", "memory-empty", "Nothing yet. Tell Ocean \"remember that...\" in any chat, or add something above."));
+    return;
+  }
+  const groups = new Map();
+  for (const m of items) {
+    const key = `${m.kind}|${m.subject}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(m);
+  }
+  const order = [...groups.keys()].sort((a, b) => (a.startsWith("me|") ? -1 : b.startsWith("me|") ? 1 : a.localeCompare(b)));
+  for (const key of order) {
+    const list = groups.get(key);
+    const h = el("h3", "", list[0].subject);
+    h.appendChild(el("span", "", KIND_LABEL[list[0].kind] || ""));
+    box.appendChild(h);
+    for (const m of list) box.appendChild(memoryRow(m));
+  }
+}
+
+function memoryRow(m) {
+  const row = el("div", `memory-item ${m.status}`);
+  const p = el("p", "", m.content);
+  row.appendChild(p);
+  if (m.status === "proposed") {
+    row.appendChild(el("span", "tag", "Waiting"));
+    const save = el("button", "", "Save");
+    save.type = "button";
+    save.addEventListener("click", async () => {
+      try { await api(`/api/memories/${m.id}`, { method: "PATCH", body: { status: "saved" } }); renderMemoryList(); }
+      catch (err) { $("memory-status").textContent = err.message; }
+    });
+    row.appendChild(save);
+  }
+  const edit = el("button", "", "Edit");
+  edit.type = "button";
+  edit.setAttribute("aria-label", `Edit: ${m.content}`);
+  edit.addEventListener("click", async () => {
+    const next = window.prompt("Edit this memory", m.content);
+    if (next === null || !next.trim() || next.trim() === m.content) return;
+    try { await api(`/api/memories/${m.id}`, { method: "PATCH", body: { content: next.trim() } }); renderMemoryList(); }
+    catch (err) { $("memory-status").textContent = err.message; }
+  });
+  const del = el("button", "danger", "Delete");
+  del.type = "button";
+  del.setAttribute("aria-label", `Delete: ${m.content}`);
+  del.addEventListener("click", async () => {
+    if (!window.confirm(`Delete this memory?\n\n${m.subject}: ${m.content}`)) return;
+    try { await api(`/api/memories/${m.id}`, { method: "DELETE" }); renderMemoryList(); $("memory-status").textContent = "Deleted."; }
+    catch (err) { $("memory-status").textContent = err.message; }
+  });
+  row.append(edit, del);
+  return row;
+}
+
+async function addMemory(e) {
+  e.preventDefault();
+  const kind = $("memory-kind").value;
+  const subject = $("memory-subject").value.trim() || (kind === "me" ? "Gudani" : "");
+  const content = $("memory-content").value.trim();
+  if (!subject || !content) { $("memory-status").textContent = "Add a name and what to remember."; return; }
+  try {
+    await api("/api/memories", { method: "POST", body: { kind, subject, content } });
+    $("memory-content").value = "";
+    $("memory-status").textContent = "Saved.";
+    renderMemoryList();
+  } catch (err) { $("memory-status").textContent = err.message; }
+}
+
 /* --- Settings: Chrome extension and devices ------------------------------------- */
 
 let pairTimer = null;
@@ -1972,13 +2119,21 @@ function wire() {
   $("gauge").addEventListener("click", () => ($("usage-panel").hidden ? openUsage() : closeUsage()));
   $("usage-link").addEventListener("click", openUsage);
   $("settings-link").addEventListener("click", openSettings);
+  $("memory-link").addEventListener("click", openMemory);
+  $("close-memory").addEventListener("click", closeMemory);
+  $("memory-form").addEventListener("submit", addMemory);
+  $("memory-kind").addEventListener("change", (e) => {
+    $("memory-subject").placeholder = e.target.value === "me" ? "Gudani" : e.target.value === "project" ? "Project name" : "Client name";
+    $("memory-subject").required = e.target.value !== "me";
+  });
   $("close-settings").addEventListener("click", closeSettings);
   $("make-code").addEventListener("click", makePairingCode);
   $("desktop-open-settings").addEventListener("click", () => desktop && desktop.openSettings());
   $("close-usage").addEventListener("click", closeUsage);
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
-    if (!$("settings-panel").hidden) closeSettings();
+    if (!$("memory-panel").hidden) closeMemory();
+    else if (!$("settings-panel").hidden) closeSettings();
     else if (!$("usage-panel").hidden) closeUsage();
     else if (!$("chat-menu").hidden) toggleMenu(false);
     else if ($("sidebar").classList.contains("open")) closeSidebar();

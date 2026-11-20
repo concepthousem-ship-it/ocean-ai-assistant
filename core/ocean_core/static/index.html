@@ -6,20 +6,20 @@
   <meta name="color-scheme" content="light">
   <meta name="theme-color" content="#FFFFFF">
   <title>Ocean</title>
-  <link rel="icon" href="icon.svg?v=10" type="image/svg+xml">
+  <link rel="icon" href="icon.svg?v=11" type="image/svg+xml">
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/pwa/apple-touch-icon.png">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="application-name" content="Ocean">
-  <link rel="stylesheet" href="app.css?v=10">
-  <script src="vendor/marked.js?v=10" defer></script>
-  <script src="vendor/purify.js?v=10" defer></script>
-  <script src="app.js?v=10" defer></script>
+  <link rel="stylesheet" href="app.css?v=11">
+  <script src="vendor/marked.js?v=11" defer></script>
+  <script src="vendor/purify.js?v=11" defer></script>
+  <script src="app.js?v=11" defer></script>
 </head>
 <body>
   <!-- ===== Sign in and setup ===== -->
   <main id="auth" class="auth" hidden>
-    <div class="auth-brand"><img src="icon.svg?v=10" alt="" width="44" height="44"><span>Ocean</span></div>
+    <div class="auth-brand"><img src="icon.svg?v=11" alt="" width="44" height="44"><span>Ocean</span></div>
 
     <form id="signin-form" class="auth-card" hidden>
       <h1>Welcome back</h1>
@@ -83,7 +83,7 @@
     <aside id="sidebar" class="sidebar" aria-label="Chats">
       <div class="side-top">
         <a href="#" id="home-link" class="brand" aria-label="Ocean, start a new chat">
-          <img src="icon.svg?v=10" alt="" width="28" height="28"><span>Ocean</span>
+          <img src="icon.svg?v=11" alt="" width="28" height="28"><span>Ocean</span>
         </a>
         <button id="collapse-sidebar" class="icon-btn" aria-label="Hide chat list" title="Hide chat list">
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3"/><path d="M9.5 4.5v15"/></svg>
@@ -103,6 +103,10 @@
         <button id="usage-link" class="side-row">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg>
           Usage
+        </button>
+        <button id="memory-link" class="side-row">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4.5a3 3 0 0 0-3 3 3 3 0 0 0-2 5.2A3.5 3.5 0 0 0 8.5 19H12V4.5z"/><path d="M15 4.5a3 3 0 0 1 3 3 3 3 0 0 1 2 5.2 3.5 3.5 0 0 1-4.5 6.3H12"/></svg>
+          Memory
         </button>
         <button id="settings-link" class="side-row">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
@@ -153,7 +157,7 @@
       <div id="scroller" class="scroller">
         <!-- Start screen -->
         <div id="welcome" class="welcome">
-          <img src="icon.svg?v=10" alt="" width="76" height="76" class="welcome-logo">
+          <img src="icon.svg?v=11" alt="" width="76" height="76" class="welcome-logo">
           <h1 id="greeting" class="greeting">Good day</h1>
           <p class="welcome-sub">What are we working on?</p>
         </div>
@@ -205,6 +209,34 @@
         <p id="status" class="status" role="status"></p>
       </div>
     </section>
+
+    <!-- Memory panel -->
+    <aside id="memory-panel" class="usage-panel" aria-label="Memory" hidden>
+      <div class="usage-head">
+        <h2>Memory</h2>
+        <button id="close-memory" class="icon-btn" aria-label="Close memory">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <p class="muted small">What Ocean remembers across all chats. Client and project notes are only used in private chats.</p>
+      <form id="memory-form" class="memory-form">
+        <div class="memory-form-row">
+          <label class="sr-only" for="memory-kind">Type</label>
+          <select id="memory-kind">
+            <option value="client">Client</option>
+            <option value="project">Project</option>
+            <option value="me">About me</option>
+          </select>
+          <label class="sr-only" for="memory-subject">Name</label>
+          <input id="memory-subject" placeholder="Client or project name" maxlength="200" required>
+        </div>
+        <label class="sr-only" for="memory-content">What to remember</label>
+        <textarea id="memory-content" rows="2" maxlength="600" placeholder="For example: brand colour is ochre #C8872E" required></textarea>
+        <button type="submit" class="btn btn-primary small-btn">Add to memory</button>
+      </form>
+      <p id="memory-status" class="muted small" role="status"></p>
+      <div id="memory-list" class="memory-list"></div>
+    </aside>
 
     <!-- Settings panel -->
     <aside id="settings-panel" class="usage-panel" aria-label="Settings" hidden>
@@ -262,7 +294,7 @@
     </div>
     <button type="button" id="voice-orb" class="voice-orb" data-state="idle" aria-describedby="voice-hint">
       <span class="voice-ring" aria-hidden="true"></span>
-      <img src="icon.svg?v=10" alt="" width="132" height="132">
+      <img src="icon.svg?v=11" alt="" width="132" height="132">
     </button>
     <p id="voice-state" class="voice-state" aria-live="polite">Starting...</p>
     <p id="voice-hint" class="voice-hint"></p>

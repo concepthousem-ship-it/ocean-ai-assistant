@@ -42,6 +42,7 @@ from .config import Settings, load_settings
 from .db import (
     Conversation,
     Image,
+    Memory,
     Upload,
     Message,
     UsageEvent,
@@ -55,6 +56,7 @@ from .limits import estimate_units, limit_for
 from .voice import VoiceError, speak, speakable, transcribe
 from .tools import image_settings_from
 from .persona import OCEAN_SYSTEM_PROMPT
+from .memory import MEMORY_RULES, NEVER_STORE, MemoryStore, memory_out
 from .devices import find_device, make_router as devices_router
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -397,13 +399,20 @@ def create_app(
         model: str | None,
         browser: bool = False,
         laptop: bool = False,
+        memory: MemoryStore | None = None,
+        memory_context: str = "",
     ) -> AgentResult:
         s: Settings = request.app.state.settings
+        system = OCEAN_SYSTEM_PROMPT
+        if memory is not None:
+            system += "\n\n" + MEMORY_RULES
+        if memory_context:
+            system += "\n\n" + memory_context
         try:
             return await run_agent(
                 s,
                 brain or s.default_brain,
-                [{"role": "system", "content": OCEAN_SYSTEM_PROMPT}] + messages,
+                [{"role": "system", "content": system}] + messages,
                 request.app.state.http,
                 private,
                 provider,
@@ -412,6 +421,7 @@ def create_app(
                 image_saver(request),
                 browser=browser,
                 laptop=laptop,
+                memory=memory,
             )
         except BrainError as err:
             raise HTTPException(err.status_code, str(err))
@@ -567,7 +577,16 @@ def create_app(
         extra_rules: str | None = None,
         browser: bool = False,
         laptop: bool = False,
+        conversation_id: int | None = None,
+        memory: MemoryStore | None = None,
     ) -> AgentResult:
+        if memory is None:
+            memory = MemoryStore(request.app.state.sessions, conversation_id, str(user.get("content", "")), private)
+        recent = " ".join(str(m.get("content", ""))[:2000] for m in history[-6:]) + " " + str(user.get("content", ""))
+        try:
+            memory_context = await memory.context(recent)
+        except Exception:  # memory must never stop a reply
+            memory_context = ""
         hints = [
             h
             for h in (extra_rules, MODE_HINTS.get(options.mode or ""), VOICE_HINT if options.voice else None)
@@ -575,7 +594,8 @@ def create_app(
         ]
         convo = history + [{"role": "system", "content": h} for h in hints] + [user]
         return await run_brain(
-            request, convo, options.brain, private, options.provider, options.model, browser, laptop
+            request, convo, options.brain, private, options.provider, options.model, browser, laptop,
+            memory, memory_context,
         )
 
     def bot_message(conversation_id: int, result: AgentResult) -> Message:
@@ -695,9 +715,10 @@ def create_app(
             rules = BROWSER_RULES if browser else PAGE_ONLY_RULES
         if body.laptop:
             rules = "\n\n".join(r for r in (rules, LAPTOP_RULES) if r)
+        memory = MemoryStore(request.app.state.sessions, conversation_id, body.content, private)
         result = await ask(
             request, history, {"role": "user", "content": user_for_model}, private, body, rules,
-            browser, body.laptop,
+            browser, body.laptop, conversation_id, memory,
         )
         if result.pending is not None:
             run = {
@@ -711,6 +732,7 @@ def create_app(
                 "provider": body.provider,
                 "model": body.model,
                 "actions_done": 0,
+                "memory": memory,
             }
             return pause(request, run, result)
         return await save_turn(
@@ -734,6 +756,7 @@ def create_app(
             result = await resume_agent(
                 s, run["brain"], pending, results, run["steps"], request.app.state.http,
                 run["private"], run["provider"], run["model"], recorder(request), image_saver(request),
+                run.get("memory"),
             )
         except BrainError as err:
             raise HTTPException(err.status_code, str(err))
@@ -786,7 +809,7 @@ def create_app(
             old_reply_id = rows[-1].id
             private = c.private
 
-        result = await ask(request, history, user, private, body)
+        result = await ask(request, history, user, private, body, conversation_id=conversation_id)
 
         async with request.app.state.sessions() as db:
             c = await get_conversation(db, conversation_id)
@@ -822,7 +845,7 @@ def create_app(
             remove_ids = [m.id for m in rows[last:]]
             private = c.private
 
-        result = await ask(request, history, user, private, body)
+        result = await ask(request, history, user, private, body, conversation_id=conversation_id)
 
         async with request.app.state.sessions() as db:
             c = await get_conversation(db, conversation_id)
@@ -837,6 +860,86 @@ def create_app(
                 "removed": remove_ids,
                 "messages": [message_out(user_msg), message_out(bot_msg)],
             }
+
+    # --- Memory ---------------------------------------------------------------
+
+    class MemoryIn(BaseModel):
+        kind: Literal["client", "project", "me"] = "client"
+        subject: str = Field(min_length=1, max_length=200)
+        content: str = Field(min_length=1, max_length=600)
+
+    class MemoryPatch(BaseModel):
+        kind: Literal["client", "project", "me"] | None = None
+        subject: str | None = Field(default=None, min_length=1, max_length=200)
+        content: str | None = Field(default=None, min_length=1, max_length=600)
+        status: Literal["saved"] | None = None
+
+    def check_storable(text: str) -> None:
+        if NEVER_STORE.search(text or ""):
+            raise HTTPException(400, "That looks like a password, key, card or ID number. Ocean never stores those.")
+
+    async def mark_memory_steps(db, m: Memory, status: str) -> None:
+        """Keep the Save card in the chat in step with what happened."""
+        if not m.conversation_id:
+            return
+        rows = await db.scalars(
+            select(Message).where(Message.conversation_id == m.conversation_id, Message.role == "assistant")
+        )
+        for row in rows:
+            steps = _steps(row.steps)
+            changed = False
+            for step in steps:
+                if isinstance(step, dict) and step.get("type") == "memory" and step.get("id") == m.id:
+                    step["status"] = status
+                    changed = True
+            if changed:
+                row.steps = json.dumps(steps)
+
+    @app.get("/api/memories", dependencies=[Depends(require_token)])
+    async def list_memories(request: Request) -> dict:
+        async with request.app.state.sessions() as db:
+            rows = await db.scalars(select(Memory).order_by(Memory.subject, Memory.updated_at.desc()))
+            return {"memories": [memory_out(m) for m in rows]}
+
+    @app.post("/api/memories", status_code=201, dependencies=[Depends(require_token)])
+    async def add_memory(body: MemoryIn, request: Request) -> dict:
+        check_storable(body.content)
+        async with request.app.state.sessions() as db:
+            m = Memory(kind=body.kind, subject=" ".join(body.subject.split()), content=" ".join(body.content.split()), status="saved")
+            db.add(m)
+            await db.commit()
+            return memory_out(m)
+
+    @app.patch("/api/memories/{memory_id}", dependencies=[Depends(require_token)])
+    async def update_memory(memory_id: int, body: MemoryPatch, request: Request) -> dict:
+        async with request.app.state.sessions() as db:
+            m = await db.get(Memory, memory_id)
+            if m is None:
+                raise HTTPException(404, "That memory was not found.")
+            if body.content is not None:
+                check_storable(body.content)
+                m.content = " ".join(body.content.split())
+            if body.subject is not None:
+                m.subject = " ".join(body.subject.split())
+            if body.kind is not None:
+                m.kind = body.kind
+            if body.status is not None and m.status != body.status:
+                m.status = body.status
+                await mark_memory_steps(db, m, body.status)
+            m.updated_at = utcnow()
+            await db.commit()
+            return memory_out(m)
+
+    @app.delete("/api/memories/{memory_id}", status_code=204, dependencies=[Depends(require_token)])
+    async def delete_memory(memory_id: int, request: Request) -> Response:
+        async with request.app.state.sessions() as db:
+            m = await db.get(Memory, memory_id)
+            if m is None:
+                raise HTTPException(404, "That memory was not found.")
+            await mark_memory_steps(db, m, "skipped" if m.status == "proposed" else "deleted")
+            await db.delete(m)
+            await db.commit()
+        return Response(status_code=204)
 
     # --- Uploads and voice ---------------------------------------------------
 

@@ -6,20 +6,20 @@
   <meta name="color-scheme" content="light">
   <meta name="theme-color" content="#FFFFFF">
   <title>Ocean</title>
-  <link rel="icon" href="icon.svg?v=9" type="image/svg+xml">
+  <link rel="icon" href="icon.svg?v=10" type="image/svg+xml">
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/pwa/apple-touch-icon.png">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="application-name" content="Ocean">
-  <link rel="stylesheet" href="app.css?v=9">
-  <script src="vendor/marked.js?v=9" defer></script>
-  <script src="vendor/purify.js?v=9" defer></script>
-  <script src="app.js?v=9" defer></script>
+  <link rel="stylesheet" href="app.css?v=10">
+  <script src="vendor/marked.js?v=10" defer></script>
+  <script src="vendor/purify.js?v=10" defer></script>
+  <script src="app.js?v=10" defer></script>
 </head>
 <body>
   <!-- ===== Sign in and setup ===== -->
   <main id="auth" class="auth" hidden>
-    <div class="auth-brand"><img src="icon.svg?v=9" alt="" width="44" height="44"><span>Ocean</span></div>
+    <div class="auth-brand"><img src="icon.svg?v=10" alt="" width="44" height="44"><span>Ocean</span></div>
 
     <form id="signin-form" class="auth-card" hidden>
       <h1>Welcome back</h1>
@@ -83,7 +83,7 @@
     <aside id="sidebar" class="sidebar" aria-label="Chats">
       <div class="side-top">
         <a href="#" id="home-link" class="brand" aria-label="Ocean, start a new chat">
-          <img src="icon.svg?v=9" alt="" width="28" height="28"><span>Ocean</span>
+          <img src="icon.svg?v=10" alt="" width="28" height="28"><span>Ocean</span>
         </a>
         <button id="collapse-sidebar" class="icon-btn" aria-label="Hide chat list" title="Hide chat list">
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3"/><path d="M9.5 4.5v15"/></svg>
@@ -153,7 +153,7 @@
       <div id="scroller" class="scroller">
         <!-- Start screen -->
         <div id="welcome" class="welcome">
-          <img src="icon.svg?v=9" alt="" width="76" height="76" class="welcome-logo">
+          <img src="icon.svg?v=10" alt="" width="76" height="76" class="welcome-logo">
           <h1 id="greeting" class="greeting">Good day</h1>
           <p class="welcome-sub">What are we working on?</p>
         </div>
@@ -190,6 +190,10 @@
               <span id="rec-time" class="rec-time" hidden>0:00</span>
               <button type="button" id="mic" class="icon-btn mic" aria-label="Speak your message" title="Speak your message">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3.5" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v2.5"/></svg>
+              </button>
+              <button type="button" id="voice-mode" class="voice-btn" title="Talk with Ocean and hear it answer">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4"/></svg>
+                <span>Talk</span>
               </button>
               <button type="submit" id="send" class="send" aria-label="Send" title="Send">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/></svg>
@@ -246,6 +250,27 @@
       <div id="usage-history" class="history"></div>
       <p class="muted tiny">Limits are free-tier figures checked on 19 November 2026 and can change. Cloudflare units are estimated.</p>
     </aside>
+  </div>
+
+  <!-- Voice mode -->
+  <div id="voice-overlay" class="voice-overlay" role="dialog" aria-modal="true" aria-labelledby="voice-state" hidden>
+    <div class="voice-top">
+      <span class="voice-title">Voice mode</span>
+      <button type="button" id="voice-close" class="icon-btn" aria-label="End voice mode" title="End voice mode">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <button type="button" id="voice-orb" class="voice-orb" data-state="idle" aria-describedby="voice-hint">
+      <span class="voice-ring" aria-hidden="true"></span>
+      <img src="icon.svg?v=10" alt="" width="132" height="132">
+    </button>
+    <p id="voice-state" class="voice-state" aria-live="polite">Starting...</p>
+    <p id="voice-hint" class="voice-hint"></p>
+    <div class="voice-lines">
+      <p id="voice-heard" class="voice-heard"></p>
+      <p id="voice-said" class="voice-said"></p>
+    </div>
+    <button type="button" id="voice-end" class="voice-end">End voice mode</button>
   </div>
 </body>
 </html>

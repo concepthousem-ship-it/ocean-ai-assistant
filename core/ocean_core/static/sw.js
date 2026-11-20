@@ -4,10 +4,10 @@
    the app shell quickly. Chats and anything under /api are never cached;
    they always come fresh from the server. */
 
-const CACHE = "ocean-shell-v9";
+const CACHE = "ocean-shell-v10";
 const SHELL = [
-  "/", "/app.css?v=9", "/app.js?v=9", "/vendor/marked.js?v=9", "/vendor/purify.js?v=9",
-  "/icon.svg?v=9", "/fonts/inter-latin.woff2", "/manifest.json", "/pwa/icon-192.png",
+  "/", "/app.css?v=10", "/app.js?v=10", "/vendor/marked.js?v=10", "/vendor/purify.js?v=10",
+  "/icon.svg?v=10", "/fonts/inter-latin.woff2", "/manifest.json", "/pwa/icon-192.png",
 ];
 
 self.addEventListener("install", (event) => {

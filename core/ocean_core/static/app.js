@@ -802,8 +802,8 @@ function showError(box, message, keepNote) {
   scrollToBottom();
 }
 
-async function sendMessage(text) {
-  if (state.busy) return;
+async function sendMessage(text, opts = {}) {
+  if (state.busy) return null;
   const files = state.files.filter((f) => f.status === "ready");
   const mode = state.mode;
   setBusy(true);
@@ -832,12 +832,12 @@ async function sendMessage(text) {
       }
       result = await api(`/api/conversations/${state.current.id}/messages`, {
         method: "POST",
-        body: { content: text, file_ids: files.map((f) => f.id), laptop: !!desktop, ...askOptions() },
+        body: { content: text, file_ids: files.map((f) => f.id), laptop: !!desktop, ...askOptions(), ...(opts.voice ? { voice: true } : {}) },
       });
       result = await runActions(result, waiting);
     }
     state.current = { ...result.conversation, messages: [...state.current.messages, ...result.messages] };
-    $("input").value = "";
+    if (!opts.voice) $("input").value = "";
     state.files = [];
     renderAttachments();
     if (state.mode === "image") setMode(null);
@@ -846,10 +846,14 @@ async function sendMessage(text) {
     renderHeader();
     renderMessages();
     await refreshConversations();
+    const reply = [...result.messages].reverse().find((m) => m.role === "assistant");
+    return reply ? reply.content : "";
   } catch (err) {
     waiting.remove();
     setBusy(false);
+    if (opts.voice) { showError(box, err.message); throw err; }
     showError(box, err.message, "Your message is still in the box, so you can send it again.");
+    return null;
   } finally {
     if (state.busy) setBusy(false);
     refreshUsage();
@@ -1064,6 +1068,282 @@ function renderAttachments() {
 function updateSendButton() {
   const uploading = state.files.some((f) => f.status === "uploading");
   $("send").disabled = state.busy || uploading;
+}
+
+/* --- Voice mode: talk with Ocean and hear it answer ---------------------------------- */
+
+const talk = {
+  open: false, phase: "idle", stream: null, ctx: null, analyser: null, data: null, raf: 0,
+  recorder: null, chunks: [], audio: null, queue: [], speakingToken: 0, noise: 0.01,
+};
+const TALK = { silenceMs: 1300, minSpeechMs: 350, maxListenMs: 60000, waitMs: 25000, chunkChars: 260 };
+
+function talkSet(phase, stateText, hint = "") {
+  talk.phase = phase;
+  $("voice-orb").dataset.state = phase;
+  $("voice-state").textContent = stateText;
+  $("voice-hint").textContent = hint;
+  $("voice-orb").setAttribute("aria-label",
+    phase === "speaking" ? "Stop Ocean talking" : phase === "listening" ? "Stop listening" : phase === "idle" ? "Start talking" : "Ocean is thinking");
+}
+
+async function openVoiceMode() {
+  if (talk.open) return;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
+    setStatus("This browser cannot record sound. Try Chrome or Edge.");
+    return;
+  }
+  talk.open = true;
+  $("voice-overlay").hidden = false;
+  $("voice-heard").textContent = "";
+  $("voice-said").textContent = "";
+  // One audio element, created during the tap, so phones allow it to play later.
+  talk.audio = new Audio();
+  talk.audio.preload = "auto";
+  try { talk.audio.play().catch(() => {}); } catch (_) {}
+  talkSet("thinking", "Starting...", "");
+  try {
+    talk.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+  } catch (err) {
+    talkSet("idle", "Microphone blocked",
+      err && err.name === "NotAllowedError"
+        ? "Allow the microphone for Ocean in your browser's site settings, then tap the circle."
+        : "Ocean could not start the microphone. Tap the circle to try again.");
+    return;
+  }
+  const AC = window.AudioContext || window.webkitAudioContext;
+  talk.ctx = new AC();
+  const src = talk.ctx.createMediaStreamSource(talk.stream);
+  talk.analyser = talk.ctx.createAnalyser();
+  talk.analyser.fftSize = 1024;
+  talk.data = new Float32Array(talk.analyser.fftSize);
+  src.connect(talk.analyser);
+  meterLoop();
+  await calibrate();
+  if (talk.open) listen();
+}
+
+function closeVoiceMode() {
+  if (!talk.open) return;
+  talk.open = false;
+  talk.speakingToken++;
+  cancelAnimationFrame(talk.raf);
+  if (talk.recorder && talk.recorder.state !== "inactive") { talk.recorder.onstop = null; talk.recorder.stop(); }
+  talk.recorder = null;
+  if (talk.audio) { talk.audio.pause(); talk.audio.removeAttribute("src"); }
+  if (window.speechSynthesis) speechSynthesis.cancel();
+  if (talk.stream) talk.stream.getTracks().forEach((t) => t.stop());
+  if (talk.ctx) talk.ctx.close().catch(() => {});
+  Object.assign(talk, { stream: null, ctx: null, analyser: null, queue: [] });
+  $("voice-overlay").hidden = true;
+  talkSet("idle", "");
+  $("input").focus();
+}
+
+function level() {
+  if (!talk.analyser) return 0;
+  talk.analyser.getFloatTimeDomainData(talk.data);
+  let sum = 0;
+  for (let i = 0; i < talk.data.length; i++) sum += talk.data[i] * talk.data[i];
+  return Math.sqrt(sum / talk.data.length);
+}
+
+function meterLoop() {
+  const orb = $("voice-orb");
+  const tick = () => {
+    if (!talk.open) return;
+    const l = talk.phase === "listening" ? Math.min(1, level() / Math.max(talk.noise * 6, 0.05)) : 0;
+    orb.style.setProperty("--level", l.toFixed(3));
+    talk.raf = requestAnimationFrame(tick);
+  };
+  tick();
+}
+
+// Measure the room for half a second so speech can be told apart from background noise.
+async function calibrate() {
+  const samples = [];
+  const until = Date.now() + 500;
+  while (Date.now() < until) {
+    samples.push(level());
+    await new Promise((r) => setTimeout(r, 30));
+  }
+  samples.sort((a, b) => a - b);
+  talk.noise = samples.length ? samples[Math.floor(samples.length / 2)] : 0.01;
+}
+
+function listen() {
+  if (!talk.open || !talk.stream) return;
+  const type = pickAudioType();
+  let recorder;
+  try {
+    recorder = type ? new MediaRecorder(talk.stream, { mimeType: type }) : new MediaRecorder(talk.stream);
+  } catch (_) {
+    talkSet("idle", "Recording failed", "This browser could not record. Tap the circle to try again.");
+    return;
+  }
+  talk.recorder = recorder;
+  talk.chunks = [];
+  recorder.ondataavailable = (e) => { if (e.data && e.data.size) talk.chunks.push(e.data); };
+  talkSet("listening", "Listening...", "Talk normally. Ocean answers when you pause.");
+  recorder.start(250);
+
+  const threshold = Math.max(0.012, talk.noise * 3);
+  const startedAt = Date.now();
+  let speechStart = 0, lastLoud = 0, heard = false;
+  const watch = setInterval(() => {
+    if (!talk.open || talk.recorder !== recorder || recorder.state === "inactive") { clearInterval(watch); return; }
+    const now = Date.now();
+    if (level() > threshold) {
+      if (!speechStart) speechStart = now;
+      lastLoud = now;
+      if (now - speechStart >= TALK.minSpeechMs) heard = true;
+    } else if (speechStart && !heard && now - lastLoud > 400) {
+      speechStart = 0; // a short click or bump, not speech
+    }
+    const silentLongEnough = heard && now - lastLoud > TALK.silenceMs;
+    if (silentLongEnough || now - startedAt > TALK.maxListenMs) {
+      clearInterval(watch);
+      recorder.onstop = () => finishListening(recorder, heard);
+      recorder.stop();
+    } else if (!heard && now - startedAt > TALK.waitMs) {
+      clearInterval(watch);
+      recorder.onstop = null;
+      recorder.stop();
+      talk.recorder = null;
+      talkSet("idle", "Still here", "Tap the circle when you want to talk.");
+    }
+  }, 60);
+}
+
+async function finishListening(recorder, heard) {
+  if (talk.recorder === recorder) talk.recorder = null;
+  if (!talk.open) return;
+  if (!heard) { listen(); return; }
+  const blob = new Blob(talk.chunks, { type: (recorder.mimeType || "audio/webm").split(";")[0] });
+  talkSet("thinking", "Thinking...", "");
+  let text = "";
+  try {
+    const form = new FormData();
+    form.append("audio", blob, `speech.${blob.type.includes("mp4") ? "m4a" : blob.type.includes("ogg") ? "ogg" : "webm"}`);
+    text = ((await api("/api/transcribe", { method: "POST", form })).text || "").trim();
+  } catch (err) {
+    talkSet("idle", "Did not catch that", `${err.message} Tap the circle to try again.`);
+    return;
+  }
+  if (!talk.open) return;
+  if (!text) { listen(); return; }
+  $("voice-heard").textContent = `You: ${text}`;
+  $("voice-said").textContent = "";
+  if (state.busy) {
+    talkSet("idle", "Ocean is busy", "Wait for the current reply to finish, then tap the circle.");
+    return;
+  }
+  let reply;
+  try {
+    reply = await sendMessage(text, { voice: true });
+  } catch (err) {
+    talkSet("idle", "Something went wrong", `${err.message} Tap the circle to try again.`);
+    return;
+  }
+  if (!talk.open) return;
+  if (!reply) { listen(); return; }
+  $("voice-said").textContent = reply;
+  await speakReply(reply);
+  if (talk.open && talk.phase === "speaking") listen();
+}
+
+// Split a reply into short pieces so the first one plays quickly.
+function speechChunks(text) {
+  const clean = text.replace(/```[\s\S]*?```/g, " The code is in the chat. ");
+  const sentences = clean.split(/(?<=[.!?])\s+|\n+/).map((x) => x.trim()).filter(Boolean);
+  const out = [];
+  let cur = "";
+  for (const sentence of sentences) {
+    if (cur && (cur + " " + sentence).length > TALK.chunkChars) { out.push(cur); cur = ""; }
+    cur = cur ? `${cur} ${sentence}` : sentence;
+    while (cur.length > TALK.chunkChars * 2) { out.push(cur.slice(0, TALK.chunkChars * 2)); cur = cur.slice(TALK.chunkChars * 2); }
+  }
+  if (cur) out.push(cur);
+  return out.slice(0, 12);
+}
+
+async function fetchSpeech(text) {
+  const res = await fetch("/api/speak", {
+    method: "POST", credentials: "same-origin",
+    headers: { "Content-Type": "application/json", "X-Requested-With": "ocean" },
+    body: JSON.stringify({ text }),
+  });
+  if (res.status === 400) return null; // nothing speakable in this piece
+  if (!res.ok) {
+    let msg = `Ocean's voice failed (status ${res.status}).`;
+    try { msg = (await res.json()).detail || msg; } catch (_) {}
+    const err = new Error(msg); err.status = res.status; throw err;
+  }
+  return URL.createObjectURL(await res.blob());
+}
+
+async function speakReply(text) {
+  const token = ++talk.speakingToken;
+  talkSet("speaking", "Ocean is talking", "Tap the circle to interrupt.");
+  const pieces = speechChunks(text);
+  let next = pieces.length ? fetchSpeech(pieces[0]).catch((e) => e) : null;
+  for (let i = 0; i < pieces.length; i++) {
+    const current = await next;
+    next = i + 1 < pieces.length ? fetchSpeech(pieces[i + 1]).catch((e) => e) : null;
+    if (token !== talk.speakingToken || !talk.open) { if (typeof current === "string") URL.revokeObjectURL(current); return; }
+    if (current instanceof Error) {
+      // Cloudflare is at its limit or down: use the device's own voice for the rest.
+      $("voice-hint").textContent = "Using this device's voice for now. " + current.message;
+      await speakWithDevice(pieces.slice(i).join(" "), token);
+      return;
+    }
+    if (!current) continue;
+    await playUrl(current, token);
+    URL.revokeObjectURL(current);
+  }
+}
+
+function playUrl(url, token) {
+  return new Promise((resolve) => {
+    const a = talk.audio;
+    const done = () => { a.onended = a.onerror = null; resolve(); };
+    a.onended = done;
+    a.onerror = done;
+    a.src = url;
+    a.play().catch(done);
+    const check = setInterval(() => { if (token !== talk.speakingToken || !talk.open) { clearInterval(check); a.pause(); done(); } }, 120);
+    a.addEventListener("ended", () => clearInterval(check), { once: true });
+  });
+}
+
+function speakWithDevice(text, token) {
+  return new Promise((resolve) => {
+    if (!window.speechSynthesis) { resolve(); return; }
+    const u = new SpeechSynthesisUtterance(text.replace(/[*_#`>|]/g, ""));
+    const voices = speechSynthesis.getVoices().filter((v) => v.lang && v.lang.startsWith("en"));
+    const female = /female|zira|aria|jenny|libby|leah|sonia|natasha|samantha|karen|hazel|susan|google uk english female/i;
+    u.voice = voices.find((v) => /en-ZA/i.test(v.lang) && female.test(v.name)) || voices.find((v) => female.test(v.name)) || voices[0] || null;
+    u.onend = u.onerror = () => resolve();
+    speechSynthesis.speak(u);
+    const check = setInterval(() => { if (token !== talk.speakingToken || !talk.open) { clearInterval(check); speechSynthesis.cancel(); resolve(); } }, 150);
+    u.addEventListener("end", () => clearInterval(check));
+  });
+}
+
+function onOrbTap() {
+  if (!talk.open) return;
+  if (talk.phase === "speaking") {
+    talk.speakingToken++;
+    if (talk.audio) talk.audio.pause();
+    if (window.speechSynthesis) speechSynthesis.cancel();
+    listen();
+  } else if (talk.phase === "listening") {
+    const r = talk.recorder;
+    if (r && r.state !== "inactive") { r.onstop = () => finishListening(r, true); r.stop(); }
+  } else if (talk.phase === "idle") {
+    if (!talk.stream) { talk.open = false; $("voice-overlay").hidden = true; openVoiceMode(); return; }
+    listen();
+  }
 }
 
 /* --- Voice input --------------------------------------------------------------------- */
@@ -1661,6 +1941,11 @@ function wire() {
   });
 
   $("mic").addEventListener("click", toggleRecording);
+  $("voice-mode").addEventListener("click", openVoiceMode);
+  $("voice-close").addEventListener("click", closeVoiceMode);
+  $("voice-end").addEventListener("click", closeVoiceMode);
+  $("voice-orb").addEventListener("click", onOrbTap);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && talk.open) closeVoiceMode(); });
 
   for (const b of document.querySelectorAll(".mode")) {
     b.addEventListener("click", () => {

@@ -1,6 +1,6 @@
 # Ocean
 
-**A personal AI assistant that does the work, not just the talking.** Ocean answers questions and researches the web, but it can also write and save files on my laptop, hand big coding jobs to Claude Code and show the proof, and fill in forms in Chrome while leaving the final submit to me. One assistant, four ways in: web, phone, a Windows app and a Chrome extension.
+**A personal AI assistant that does the work, not just the talking.** Ocean answers questions, talks back in voice mode and researches the web, but it can also write and save files on my laptop, hand big coding jobs to Claude Code and show the proof, and fill in forms in Chrome while leaving the final submit to me. One assistant, four ways in: web, phone, a Windows app and a Chrome extension.
 
 I built it as a solo project, on free AI providers, for my daily work as a Shopify and Klaviyo developer in Johannesburg.
 
@@ -12,7 +12,9 @@ I built it as a solo project, on free AI providers, for my daily work as a Shopi
 |---|---|
 | **Research** | Searches the web (Tavily, Exa), reads the best pages, and answers in a fixed shape: the answer first, key points, a table where it helps, next steps and sources. |
 | **Code** | Complete code in fenced blocks with the language and a copy button. Tuned for Shopify Liquid, HTML, CSS, JavaScript and email builds. |
-| **Files and voice** | Upload PDF, Word, Excel, CSV and text files. Speak instead of typing (Groq Whisper). |
+| **Voice mode** | Tap Talk and have a hands-free conversation: Ocean hears when you stop, answers in a short spoken style and reads it aloud (Groq Whisper in, Deepgram Aura on Cloudflare out, the device's own voice as a backup). |
+| **Personality** | Witty, cheeky and opinionated, with South African slang in chat, and strictly professional in anything written for clients. |
+| **Files** | Upload PDF, Word, Excel, CSV and text files, or dictate a message with the mic. |
 | **Pictures** | Generates images with FLUX.1 schnell on Cloudflare Workers AI. |
 | **Laptop** | In the Windows app, Ocean can list, read and save files in folders I allow, open apps and links, and run a small model on the laptop with Ollama. |
 | **Claude Code** | Big coding jobs go to Claude Code on the laptop. Ocean streams every step live and ends with a proof card: files changed, commands run with their output, and anything the safety rules blocked. |
@@ -95,7 +97,7 @@ source .venv/bin/activate        (Windows: .venv\Scripts\activate)
 pip install -r requirements.txt -r requirements-dev.txt
 cp ../.env.example ../.env       (then add your own keys)
 uvicorn ocean_core.main:app --reload
-pytest                            (142 tests)
+pytest                            (149 tests)
 ```
 
 **Windows app:** `cd desktop && npm install && npm start`. Build the installer with `npm run dist:win` (needs NSIS). Tests: `node test/laptop.test.js` and `node test/updater.test.js`.
@@ -104,4 +106,4 @@ pytest                            (142 tests)
 
 ## Status
 
-Built in phases: core server, search and agents, voice and files with a new interface, desktop and browser control, installer and phone app, then automatic updates. Next on the list: long-term memory of clients and projects, and email and calendar.
+Built in phases: core server, search and agents, voice and files with a new interface, desktop and browser control, installer and phone app, automatic updates, then voice mode and a stronger personality. Next on the list: long-term memory of clients and projects, and email and calendar.

@@ -17,6 +17,7 @@ Needs the access token (Authorization: Bearer <token>):
 """
 
 import json
+import re
 import secrets
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -51,7 +52,8 @@ from .db import (
 )
 from .files import MAX_FILES_PER_MESSAGE, MAX_UPLOAD_BYTES, FileError, extract, for_model
 from .limits import estimate_units, limit_for
-from .voice import VoiceError, transcribe
+from .voice import VoiceError, speak, speakable, transcribe
+from .tools import image_settings_from
 from .persona import OCEAN_SYSTEM_PROMPT
 from .devices import find_device, make_router as devices_router
 
@@ -102,6 +104,8 @@ class AskOptions(BaseModel):
     model: str | None = Field(default=None, min_length=1, max_length=200)
     # Quick modes from the buttons by the message box.
     mode: Literal["research", "image", "code"] | None = None
+    # Sent from voice mode: Ocean's reply will be read out loud.
+    voice: bool = False
 
 
 class NewMessage(AskOptions):
@@ -191,6 +195,29 @@ MODE_HINTS = {
 }
 
 
+VOICE_HINT = (
+    "Gudani is talking to you in voice mode and your reply will be read out loud. Answer like you "
+    "are speaking: usually one to four short sentences, full personality, no markdown, no "
+    "headings, no bullet lists, no tables, no links, no code blocks and no emoji. Say numbers the "
+    "way a person would. If something really needs code, a table or a long list, give a short "
+    "spoken summary and say the full version is in the chat. Tools still work as normal."
+)
+
+_CODE_FENCE = re.compile(r"(```.*?```|`[^`\n]*`)", re.S)
+
+
+def without_dashes(text: str) -> str:
+    """Gudani does not want em or en dashes. Replace them outside code."""
+
+    def fix(part: str) -> str:
+        part = re.sub(r"(?<=\d)\s*[\u2013\u2014]\s*(?=\d)", "-", part)  # a range like 10 to 20 keeps a hyphen
+        part = re.sub(r"\s*[\u2013\u2014]\s*", ", ", part)
+        return part.replace(", ,", ",").replace(",,", ",")
+
+    pieces = _CODE_FENCE.split(text or "")
+    return "".join(p if i % 2 else fix(p) for i, p in enumerate(pieces))
+
+
 def conversation_summary(c: Conversation) -> dict:
     return {
         "id": c.id,
@@ -265,7 +292,7 @@ def create_app(
         response: Response = await call_next(request)
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; script-src 'self'; style-src 'self'; "
-            "img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; "
+            "img-src 'self' data:; media-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; "
             "base-uri 'none'; form-action 'none'"
         )
         response.headers["X-Content-Type-Options"] = "nosniff"
@@ -541,7 +568,11 @@ def create_app(
         browser: bool = False,
         laptop: bool = False,
     ) -> AgentResult:
-        hints = [h for h in (extra_rules, MODE_HINTS.get(options.mode or "")) if h]
+        hints = [
+            h
+            for h in (extra_rules, MODE_HINTS.get(options.mode or ""), VOICE_HINT if options.voice else None)
+            if h
+        ]
         convo = history + [{"role": "system", "content": h} for h in hints] + [user]
         return await run_brain(
             request, convo, options.brain, private, options.provider, options.model, browser, laptop
@@ -552,7 +583,7 @@ def create_app(
         return Message(
             conversation_id=conversation_id,
             role="assistant",
-            content=reply.content,
+            content=without_dashes(reply.content),
             brain=reply.brain,
             provider=reply.provider,
             model=reply.model,
@@ -868,6 +899,26 @@ def create_app(
         except VoiceError as err:
             raise HTTPException(err.status_code, str(err))
         return {"text": text}
+
+    class SpeakRequest(BaseModel):
+        text: str = Field(min_length=1, max_length=4000)
+
+    @app.post("/api/speak", dependencies=[Depends(require_token)])
+    async def text_to_speech(request: Request, body: SpeakRequest) -> Response:
+        s: Settings = request.app.state.settings
+        cf = next((p for p in s.cloud_providers if p.name == "cloudflare"), None)
+        run = image_settings_from(cf.base_url, cf.api_key, "speech") if cf else None
+        text = speakable(body.text)
+        if not text:
+            raise HTTPException(400, "There was nothing to say.")
+        try:
+            audio = await speak(
+                run.run_url if run else "", run.api_key if run else "", text,
+                request.app.state.http, recorder(request),
+            )
+        except VoiceError as err:
+            raise HTTPException(err.status_code, str(err))
+        return Response(audio, media_type="audio/mpeg", headers={"Cache-Control": "no-store"})
 
     # --- Usage tracker ----------------------------------------------------
 
